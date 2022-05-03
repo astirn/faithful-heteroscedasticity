@@ -35,6 +35,9 @@ class HeteroscedasticRegression(tf.keras.Model):
     def __init__(self, y_mean=0.0, y_var=1.0, **kwargs):
         tf.keras.Model.__init__(self, **kwargs)
 
+        # save optimization method
+        self.optimization = 'first-order'
+
         self.y_mean = tf.constant(y_mean, dtype=tf.float32)
         self.y_var = tf.constant(y_var, dtype=tf.float32)
         self.y_std = tf.sqrt(self.y_var)
@@ -54,17 +57,22 @@ class HeteroscedasticRegression(tf.keras.Model):
     def de_whiten_log_precision(self, log_precision):
         return log_precision - tf.math.log(self.y_var)
 
-    def train_step(self, data):
+    def first_order_gradients(self, data):
         with tf.GradientTape() as tape:
-            mean, var = self.call(data, training=True)
-            py_x = tfp.distributions.MultivariateNormalDiag(loc=mean, scale_diag=var ** 0.5)
+            mean_var = self.call(data, training=True)
+            py_x = tfp.distributions.MultivariateNormalDiag(loc=mean_var[0], scale_diag=mean_var[1] ** 0.5)
             ll = py_x.log_prob(self.whiten_targets(data['y']))
             loss = tf.reduce_mean(-ll)
+        return mean_var[0], mean_var[1], tape.gradient(loss, self.trainable_variables)
 
-        # update model parameters
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+    def train_step(self, data):
+        if self.optimization == 'first-order':
+            mean, variance, gradients = self.first_order_gradients(data)
+        else:
+            raise NotImplementedError
+
+        # update parameters
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         # update metrics
         self.compiled_metrics.update_state(data['y'], self.de_whiten_mean(mean))
