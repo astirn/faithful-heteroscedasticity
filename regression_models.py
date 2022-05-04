@@ -63,20 +63,20 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         # take necessary gradients
         with tf.GradientTape() as tape:
-            mean, variance = self.call(data, training=True)
-            py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=variance ** 0.5)
+            mean, precision = self.call(data, training=True)
+            py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
             ll = py_x.log_prob(self.whiten_targets(data['y']))
             loss = tf.reduce_mean(-ll)
         gradients = tape.gradient(loss, self.trainable_variables)
 
-        return mean, variance, gradients
+        return mean, precision, gradients
 
     def second_order_gradients_mean(self, data):
 
         # take necessary gradients
         with tf.GradientTape(persistent=self.run_eagerly) as tape:
-            mean, variance = self.call(data, training=True)
-            py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=variance ** 0.5)
+            mean, precision = self.call(data, training=True)
+            py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=precision ** -0.5)
             y = self.whiten_targets(data['y'])
             error = (y - mean)
             loss = tf.reduce_mean(0.5 * error ** 2 - py_x.log_prob(y))
@@ -88,11 +88,11 @@ class HeteroscedasticRegression(tf.keras.Model):
             dl_dm_automatic = tape.gradient(loss, mean)
             dl_dm_expected = -error / dim_batch
             tf.assert_less(tf.abs(dl_dm_automatic - dl_dm_expected), 1e-5)
-            dl_dv_automatic = tape.gradient(loss, variance)
-            dl_dv_expected = 0.5 * (variance - error ** 2) / variance ** 2 / dim_batch
+            dl_dv_automatic = tape.gradient(loss, precision)
+            dl_dv_expected = 0.5 * (precision - error ** 2) / precision ** 2 / dim_batch
             tf.assert_less(tf.abs(dl_dv_automatic - dl_dv_expected), 1e-5)
 
-        return mean, variance, gradients
+        return mean, precision, gradients
 
     def second_order_gradients(self, data):
         
@@ -132,11 +132,11 @@ class HeteroscedasticRegression(tf.keras.Model):
 
     def train_step(self, data):
         if self.optimization == 'first-order':
-            mean, variance, gradients = self.first_order_gradients(data)
+            mean, precision, gradients = self.first_order_gradients(data)
         elif self.optimization == 'second-order-mean':
-            mean, variance, gradients = self.second_order_gradients_mean(data)
-        elif self.optimization == 'second-order':
-            mean, variance, gradients = self.second_order_gradients(data)
+            mean, precision, gradients = self.second_order_gradients_mean(data)
+        elif self.optimization == 'second-order-diag':
+            mean, precision, gradients = self.second_order_gradients_diag(data)
         else:
             raise NotImplementedError
 
@@ -148,6 +148,11 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         return {m.name: m.result() for m in self.metrics}
 
+    def test_step(self, data):
+        mean, precision = self.call(data, training=True)
+        self.compiled_metrics.update_state(data['y'], self.de_whiten_mean(mean))
+        return {m.name: m.result() for m in self.metrics}
+
 
 class Normal(HeteroscedasticRegression, ABC):
 
@@ -156,14 +161,14 @@ class Normal(HeteroscedasticRegression, ABC):
 
         # define parameter networks
         self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mean', **kwargs)
-        self.variance = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='variance', **kwargs)
+        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='precision', **kwargs)
 
     def call(self, inputs, **kwargs):
-        return self.mean(inputs['x'], **kwargs), self.variance(inputs['x'], **kwargs)
+        return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
 
     def predictive_moments_and_samples(self, x):
         p_x_y = tfp.distributions.MultivariateNormalDiag(loc=self.de_whiten_mean(self.mean(x)),
-                                                         scale_diag=self.de_whiten_stddev(self.variance(x) ** 0.5))
+                                                         scale_diag=self.de_whiten_stddev(self.precision(x) ** -0.5))
         return p_x_y.mean().numpy(), p_x_y.stddev().numpy(), p_x_y.sample().numpy()
 
 
