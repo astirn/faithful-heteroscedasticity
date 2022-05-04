@@ -33,11 +33,11 @@ def neural_network(d_in, d_out, n_hidden=2, d_hidden=50, f_hidden='elu', f_out=N
 
 class HeteroscedasticRegression(tf.keras.Model):
 
-    def __init__(self, y_mean=0.0, y_var=1.0, **kwargs):
+    def __init__(self, optimization, y_mean=0.0, y_var=1.0, **kwargs):
         tf.keras.Model.__init__(self, **kwargs)
 
         # save optimization method
-        self.optimization = 'first-order'
+        self.optimization = optimization
 
         # save target scaling
         self.y_mean = tf.constant(y_mean, dtype=tf.float32)
@@ -71,7 +71,7 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         return mean, variance, gradients
 
-    def second_order_gradients_fast(self, data):
+    def second_order_gradients_mean(self, data):
 
         # take necessary gradients
         with tf.GradientTape(persistent=self.run_eagerly) as tape:
@@ -93,28 +93,6 @@ class HeteroscedasticRegression(tf.keras.Model):
             tf.assert_less(tf.abs(dl_dv_automatic - dl_dv_expected), 1e-5)
 
         return mean, variance, gradients
-
-    # def first_order_clipped_gradients(self, data):
-    #     with tf.GradientTape(persistent=True) as tape:
-    #         mean_variance = tf.stack(self.call(data, training=True), axis=-1)
-    #         py_x = tfpd.MultivariateNormalDiag(loc=mean_variance[..., 0], scale_diag=mean_variance[..., 1] ** 0.5)
-    #         ll = py_x.log_prob(self.whiten_targets(data['y']))
-    #         loss = tf.reduce_mean(-ll)
-    #     dl_dmv = tape.jacobian(loss, mean_variance)
-    #     dmv_dnet = tape.jacobian(mean_variance, self.trainable_variables)
-    #
-    #     m, v = dl_dmv[..., 0], dl_dmv[..., 1]
-    #     dl_dm, dl_dv = dl_dmv[..., 0], dl_dmv[..., 1]
-    #     # error = self.whiten_targets(data['y']) - mean_variance[..., 0]
-    #     # tf.assert_less(self.optimizer.learning_rate, mean_variance[..., 1])
-    #     # dl_dm_clip_needed = tf.greater(self.optimizer.learning_rate, mean_variance[..., 1])
-    #     # dl_dm_clip_values = -error / tf.cast(tf.shape(data['y'])[0], tf.float32)
-    #     # dl_dm = tf.where(dl_dm_clip_needed, dl_dm_clip_values, dl_dm)
-    #     # tf.assert_less(tf.abs(error - self.optimizer.learning_rate * dl_dm), tf.abs(error))
-    #     dmv_dnet = tape.jacobian(mean_variance, self.trainable_variables)
-    #     gradients = [tf.einsum('bij,bij...->...', tf.stack([dl_dm, dl_dv], axis=-1), d) for d in dmv_dnet]
-    #
-    #     return mean_variance[0], mean_variance[1], gradients
 
     def second_order_gradients(self, data):
         
@@ -149,10 +127,8 @@ class HeteroscedasticRegression(tf.keras.Model):
     def train_step(self, data):
         if self.optimization == 'first-order':
             mean, variance, gradients = self.first_order_gradients(data)
-        elif self.optimization == 'second-order-fast':
-            mean, variance, gradients = self.second_order_gradients_fast(data)
-        elif self.optimization == 'first-order-clipped':
-            mean, variance, gradients = self.first_order_clipped_gradients(data)
+        elif self.optimization == 'second-order-mean':
+            mean, variance, gradients = self.second_order_gradients_mean(data)
         elif self.optimization == 'second-order':
             mean, variance, gradients = self.second_order_gradients(data)
         else:
@@ -169,8 +145,8 @@ class HeteroscedasticRegression(tf.keras.Model):
 
 class Normal(HeteroscedasticRegression, ABC):
 
-    def __init__(self, dim_x, dim_y, y_mean=0.0, y_var=1.0, **kwargs):
-        HeteroscedasticRegression.__init__(self, y_mean, y_var, name='Normal')
+    def __init__(self, dim_x, dim_y, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
+        HeteroscedasticRegression.__init__(self, optimization, y_mean, y_var, name='Normal')
 
         # define parameter networks
         self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mean', **kwargs)
@@ -237,7 +213,8 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', default=False, help='sparse toy data option')
-    parser.add_argument('--model', type=str, default='Normal', help='algorithm')
+    parser.add_argument('--model', type=str, default='Normal', help='{Normal, MC-dropout, Ensemble}')
+    parser.add_argument('--optimization', type=str, default='first-order', help='how to compute gradients')
     parser.add_argument('--sparse', action='store_true', default=False, help='sparse toy data option')
     args = parser.parse_args()
 
@@ -253,12 +230,14 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     # declare model instance
-    mdl = MODEL(dim_x=x_train.shape[1],
-                dim_y=y_train.shape[1],
-                y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
-                y_var=tf.constant([y_train.var()], dtype=tf.float32),
-                num_mc_samples=50
-                )
+    mdl = MODEL(
+        optimization=args.optimization,
+        dim_x=x_train.shape[1],
+        dim_y=y_train.shape[1],
+        y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
+        y_var=tf.constant([y_train.var()], dtype=tf.float32),
+        num_mc_samples=50
+    )
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
