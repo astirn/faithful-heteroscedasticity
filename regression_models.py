@@ -7,6 +7,7 @@ import tensorflow_probability as tfp
 
 from abc import ABC
 from matplotlib import pyplot as plt
+from tensorflow_probability import distributions as tfpd
 
 from callbacks import PretrainCallback, RegressionCallback
 from regression_data import generate_toy_data
@@ -38,6 +39,7 @@ class HeteroscedasticRegression(tf.keras.Model):
         # save optimization method
         self.optimization = 'first-order'
 
+        # save target scaling
         self.y_mean = tf.constant(y_mean, dtype=tf.float32)
         self.y_var = tf.constant(y_var, dtype=tf.float32)
         self.y_std = tf.sqrt(self.y_var)
@@ -58,16 +60,101 @@ class HeteroscedasticRegression(tf.keras.Model):
         return log_precision - tf.math.log(self.y_var)
 
     def first_order_gradients(self, data):
+
+        # take necessary gradients
         with tf.GradientTape() as tape:
-            mean_var = self.call(data, training=True)
-            py_x = tfp.distributions.MultivariateNormalDiag(loc=mean_var[0], scale_diag=mean_var[1] ** 0.5)
+            mean, variance = self.call(data, training=True)
+            py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=variance ** 0.5)
             ll = py_x.log_prob(self.whiten_targets(data['y']))
             loss = tf.reduce_mean(-ll)
-        return mean_var[0], mean_var[1], tape.gradient(loss, self.trainable_variables)
+        gradients = tape.gradient(loss, self.trainable_variables)
+
+        return mean, variance, gradients
+
+    def second_order_gradients_fast(self, data):
+
+        # take necessary gradients
+        with tf.GradientTape(persistent=self.run_eagerly) as tape:
+            mean, variance = self.call(data, training=True)
+            py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=variance ** 0.5)
+            y = self.whiten_targets(data['y'])
+            error = (y - mean)
+            loss = tf.reduce_mean(0.5 * error ** 2 - py_x.log_prob(y))
+        gradients = tape.gradient(loss, self.trainable_variables)
+
+        # if we are debugging, make sure our gradient assumptions hold
+        if self.run_eagerly:
+            dim_batch = tf.cast(tf.shape(mean)[0], tf.float32)
+            dl_dm_automatic = tape.gradient(loss, mean)
+            dl_dm_expected = -error / dim_batch
+            tf.assert_less(tf.abs(dl_dm_automatic - dl_dm_expected), 1e-5)
+            dl_dv_automatic = tape.gradient(loss, variance)
+            dl_dv_expected = 0.5 * (variance - error ** 2) / variance ** 2 / dim_batch
+            tf.assert_less(tf.abs(dl_dv_automatic - dl_dv_expected), 1e-5)
+
+        return mean, variance, gradients
+
+    # def first_order_clipped_gradients(self, data):
+    #     with tf.GradientTape(persistent=True) as tape:
+    #         mean_variance = tf.stack(self.call(data, training=True), axis=-1)
+    #         py_x = tfpd.MultivariateNormalDiag(loc=mean_variance[..., 0], scale_diag=mean_variance[..., 1] ** 0.5)
+    #         ll = py_x.log_prob(self.whiten_targets(data['y']))
+    #         loss = tf.reduce_mean(-ll)
+    #     dl_dmv = tape.jacobian(loss, mean_variance)
+    #     dmv_dnet = tape.jacobian(mean_variance, self.trainable_variables)
+    #
+    #     m, v = dl_dmv[..., 0], dl_dmv[..., 1]
+    #     dl_dm, dl_dv = dl_dmv[..., 0], dl_dmv[..., 1]
+    #     # error = self.whiten_targets(data['y']) - mean_variance[..., 0]
+    #     # tf.assert_less(self.optimizer.learning_rate, mean_variance[..., 1])
+    #     # dl_dm_clip_needed = tf.greater(self.optimizer.learning_rate, mean_variance[..., 1])
+    #     # dl_dm_clip_values = -error / tf.cast(tf.shape(data['y'])[0], tf.float32)
+    #     # dl_dm = tf.where(dl_dm_clip_needed, dl_dm_clip_values, dl_dm)
+    #     # tf.assert_less(tf.abs(error - self.optimizer.learning_rate * dl_dm), tf.abs(error))
+    #     dmv_dnet = tape.jacobian(mean_variance, self.trainable_variables)
+    #     gradients = [tf.einsum('bij,bij...->...', tf.stack([dl_dm, dl_dv], axis=-1), d) for d in dmv_dnet]
+    #
+    #     return mean_variance[0], mean_variance[1], gradients
+
+    def second_order_gradients(self, data):
+        
+        # take necessary gradients
+        with tf.GradientTape(persistent=True) as tape:
+            mean_variance = tf.stack(self.call(data, training=True), axis=-1)
+            py_x = tfpd.MultivariateNormalDiag(loc=mean_variance[..., 0], scale_diag=mean_variance[..., 1] ** 0.5)
+            ll = py_x.log_prob(self.whiten_targets(data['y']))
+            loss = tf.reduce_mean(-ll)
+        dl_dmv = tape.jacobian(loss, mean_variance)
+        dmv_dnet = tape.jacobian(mean_variance, self.trainable_variables)
+
+        # bifurcate mean-variance tensors
+        m, v = mean_variance[..., 0], mean_variance[..., 1]
+        dl_dm, dl_dv = dl_dmv[..., 0], dl_dmv[..., 1]
+
+        # compute hessian
+        error = self.whiten_targets(data['y']) - m
+        d2l_dm2 = 1 / v
+        # d2l_dv2 = (v - 2 * error ** 2) / (2 * v ** 3)
+        # d2l_dmdv = error / v ** 2
+        # H = tf.reshape(tf.concat([d2l_dm2, d2l_dmdv, d2l_dmdv, d2l_dv2], axis=-1), [-1, 2, 2])
+        # H /= tf.cast(tf.shape(m)[0], tf.float32)
+
+        # apply second order information
+        # dl_dmv = tf.transpose(tf.linalg.solve(H, tf.transpose(dl_dmv, [0, 2, 1])), [0, 2, 1])
+        dl_dmv = tf.stack([dl_dm / d2l_dm2, dl_dv], axis=-1)
+        gradients = [tf.einsum('bij,bij...->...', dl_dmv, d) for d in dmv_dnet]
+
+        return mean_variance[0], mean_variance[1], gradients
 
     def train_step(self, data):
         if self.optimization == 'first-order':
             mean, variance, gradients = self.first_order_gradients(data)
+        elif self.optimization == 'second-order-fast':
+            mean, variance, gradients = self.second_order_gradients_fast(data)
+        elif self.optimization == 'first-order-clipped':
+            mean, variance, gradients = self.first_order_clipped_gradients(data)
+        elif self.optimization == 'second-order':
+            mean, variance, gradients = self.second_order_gradients(data)
         else:
             raise NotImplementedError
 
@@ -149,6 +236,7 @@ if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true', default=False, help='sparse toy data option')
     parser.add_argument('--model', type=str, default='Normal', help='algorithm')
     parser.add_argument('--sparse', action='store_true', default=False, help='sparse toy data option')
     args = parser.parse_args()
@@ -174,7 +262,7 @@ if __name__ == '__main__':
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
-    mdl.compile(optimizer=optimizer, run_eagerly=False, metrics=[tf.keras.metrics.RootMeanSquaredError()])
+    mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[tf.keras.metrics.RootMeanSquaredError()])
 
     # train model
     num_epochs = int(15e3)
