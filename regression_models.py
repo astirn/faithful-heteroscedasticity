@@ -74,6 +74,7 @@ class HeteroscedasticRegression(tf.keras.Model):
     def second_order_gradients_mean(self, data):
 
         # take necessary gradients
+        dim_batch = tf.cast(tf.shape(data['x'])[0], tf.float32)
         with tf.GradientTape(persistent=self.run_eagerly) as tape:
             mean, precision = self.call(data, training=True)
             py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=precision ** -0.5)
@@ -84,13 +85,12 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         # if we are debugging, make sure our gradient assumptions hold
         if self.run_eagerly:
-            dim_batch = tf.cast(tf.shape(mean)[0], tf.float32)
             dl_dm_automatic = tape.gradient(loss, mean)
             dl_dm_expected = -error / dim_batch
             tf.assert_less(tf.abs(dl_dm_automatic - dl_dm_expected), 1e-5)
-            dl_dv_automatic = tape.gradient(loss, precision)
-            dl_dv_expected = 0.5 * (precision - error ** 2) / precision ** 2 / dim_batch
-            tf.assert_less(tf.abs(dl_dv_automatic - dl_dv_expected), 1e-5)
+            dl_dl_automatic = tape.gradient(loss, precision)
+            dl_dl_expected = 0.5 * (error ** 2 - precision ** -1) / dim_batch
+            tf.assert_less(tf.abs(dl_dl_automatic - dl_dl_expected), 1e-5)
 
         return mean, precision, gradients
 
