@@ -98,7 +98,7 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         return mean, precision, gradients
 
-    def second_order_gradients_diag(self, data):
+    def second_order_gradients_diag(self, data, diag):
         
         # take necessary gradients
         dim_batch = tf.cast(tf.shape(data['x'])[0], tf.float32)
@@ -107,25 +107,23 @@ class HeteroscedasticRegression(tf.keras.Model):
                 mean, precision = self.call(data, training=True)
                 mean_precision = tf.stack(self.call(data, training=True), axis=-1)
                 py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-                ll = py_x.log_prob(self.whiten_targets(data['y']))
-                loss = tf.reduce_mean(-ll)
-            dl_dm = tape1.gradient(loss, mean)
-            dl_dp = tape1.gradient(loss, precision)
+                nll = -py_x.log_prob(self.whiten_targets(data['y']))
+                loss = tf.reduce_mean(nll)
+            dnll_dm = tape1.gradient(loss, mean)
+            dnll_dp = tape1.gradient(loss, precision)
             dmp_dnet = tape1.jacobian(mean_precision, self.trainable_variables)
-        d2l_dm2 = tape2.gradient(dl_dm, mean) * dim_batch
-        d2l_dp2 = tape2.gradient(dl_dp, precision) * dim_batch
-        d2l_dp2 = tf.clip_by_value(d2l_dp2, 1e-3, np.inf)
-
-        # # assemble hessian
-        # H = tf.reshape(tf.concat([d2l_dm2, d2l_dmdv, d2l_dmdv, d2l_dv2], axis=-1), [-1, 2, 2])
-        # H += tf.eye(2) / self.optimizer.learning_rate
-        # # H = tf.linalg.diag(tf.linalg.diag_part(H))
+        d2nll_dm2 = tape2.gradient(dnll_dm, mean) * dim_batch
+        d2nll_dp2 = tape2.gradient(dnll_dp, precision) * dim_batch
+        tf.assert_greater(d2nll_dp2, 0.0)
+        d2nll_dp2 = tf.clip_by_value(d2nll_dp2, 1e-3, np.inf)
 
         # apply second order information
-        # dl_dmv = tf.transpose(tf.linalg.solve(H, tf.stack([dl_dm, dl_dv], axis=-2)), [0, 2, 1])
-
-        # apply second order information
-        dl_dmv = tf.stack([dl_dm / d2l_dm2, dl_dp / d2l_dp2], axis=-1)
+        if diag:
+            dl_dmv = tf.stack([dnll_dm / d2nll_dm2, dnll_dp / d2nll_dp2], axis=-1)
+        else:
+            d2nll_dmdp = tape2.gradient(dnll_dm, precision)
+            H = tf.reshape(tf.concat([d2nll_dm2, d2nll_dmdp, d2nll_dmdp, d2nll_dp2], axis=-1), [-1, 2, 2])
+            dl_dmv = tf.transpose(tf.linalg.solve(H, tf.stack([dnll_dm, dnll_dp], axis=-2)), [0, 2, 1])
         gradients = [tf.tensordot(dl_dmv, d, axes=[[0, 1, 2], [0, 1, 2]]) for d in dmp_dnet]
 
         return mean, precision, gradients
@@ -135,8 +133,8 @@ class HeteroscedasticRegression(tf.keras.Model):
             mean, precision, gradients = self.first_order_gradients(data)
         elif self.optimization == 'second-order-mean':
             mean, precision, gradients = self.second_order_gradients_mean(data)
-        elif self.optimization == 'second-order-diag':
-            mean, precision, gradients = self.second_order_gradients_diag(data)
+        elif self.optimization in {'second-order-diag', 'second-order-full'}:
+            mean, precision, gradients = self.second_order_gradients_diag(data, diag='diag' in self.optimization)
         else:
             raise NotImplementedError
 
