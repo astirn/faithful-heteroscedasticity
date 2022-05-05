@@ -54,6 +54,9 @@ class HeteroscedasticRegression(tf.keras.Model):
     def de_whiten_stddev(self, sigma):
         return sigma * self.y_std
 
+    def de_whiten_variance(self, variance):
+        return variance * self.y_var
+
     def de_whiten_precision(self, precision):
         return precision / self.y_var
 
@@ -150,8 +153,9 @@ class HeteroscedasticRegression(tf.keras.Model):
         return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
-        mean, precision = self.call(data, training=True)
-        self.compiled_metrics.update_state(data['y'], self.de_whiten_mean(mean))
+        mean, variance = self.predictive_central_moments(data['x'])
+        self.compiled_metrics.update_state(data['y'], mean)
+
         return {m.name: m.result() for m in self.metrics}
 
 
@@ -167,33 +171,45 @@ class Normal(HeteroscedasticRegression, ABC):
     def call(self, inputs, **kwargs):
         return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
 
-    def predictive_moments_and_samples(self, x):
-        px_y = tfp.distributions.MultivariateNormalDiag(loc=self.de_whiten_mean(self.mean(x)),
-                                                        scale_diag=self.de_whiten_stddev(self.precision(x) ** -0.5))
-        return px_y.mean().numpy(), px_y.stddev().numpy(), px_y.sample().numpy()
+    def predictive_central_moments(self, x):
+        mean = self.de_whiten_mean(self.mean(x, training=False))
+        variance = self.de_whiten_precision(self.precision(x, training=False)) ** -1
+
+        return mean, variance
+
+    def predictive_distribution(self, x):
+        mean = self.de_whiten_mean(self.mean(x, training=False))
+        stddev = self.de_whiten_precision(self.precision(x, training=False)) ** -0.5
+        px_y = tfp.distributions.MultivariateNormalDiag(loc=mean, scale_diag=stddev)
+
+        return px_y
 
 
 class MonteCarloDropout(HeteroscedasticRegression, ABC):
 
-    def __init__(self, dim_x, dim_y, **kwargs):
+    def __init__(self, dim_x, dim_y, num_mc_samples, **kwargs):
         HeteroscedasticRegression.__init__(self, name='MonteCarloDropout', **kwargs)
 
+        # save configuration
+        self.num_mc_samples = num_mc_samples
+
         # define parameter networks
-        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.2, name='mean', **kwargs)
-        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.2, name='precision', **kwargs)
+        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.1, name='mean', **kwargs)
+        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.1, name='precision', **kwargs)
 
     def call(self, inputs, **kwargs):
         return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
 
-    def predictive_moments_and_samples(self, x):
-        means = tf.stack([self.mean(x) for _ in range(self.num_mc_samples)], axis=-1)
-        variances = tf.stack([self.precision(x) ** -1 for _ in range(self.num_mc_samples)], axis=-1)
-        predictive_mean = self.de_whiten_mean(tf.reduce_mean(means, axis=-1))
+    def predictive_central_moments(self, x):
+        means = tf.stack([self.mean(x, training=True) for _ in range(self.num_mc_samples)], axis=-1)
+        variances = tf.stack([self.precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=-1)
+        predictive_mean = tf.reduce_mean(means, axis=-1)
         predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=-1) - tf.reduce_mean(means, axis=-1) ** 2
-        predictive_stddev = self.de_whiten_stddev(predictive_variance ** 0.5)
-        # px_y = tfp.distributions.MultivariateNormalDiag(loc=self.de_whiten_mean(self.mean(x)),
-        #                                                  scale_diag=self.de_whiten_stddev(self.precision(x) ** -0.5))
-        return predictive_mean.numpy(), predictive_stddev.numpy(), None
+
+        return self.de_whiten_mean(predictive_mean), self.de_whiten_variance(predictive_variance)
+
+    def predictive_distribution(self, x):
+        raise NotImplementedError
 
 
 def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, title):
@@ -261,16 +277,16 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'Normal':
         MODEL = Normal
-    if args.model == 'MonteCarloDropout':
+    elif args.model == 'MonteCarloDropout':
         MODEL = MonteCarloDropout
     else:
         raise NotImplementedError
 
     # declare model instance
     mdl = MODEL(
-        optimization=args.optimization,
         dim_x=x_train.shape[1],
         dim_y=y_train.shape[1],
+        optimization=args.optimization,
         y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
         y_var=tf.constant([y_train.var()], dtype=tf.float32),
         num_mc_samples=50
@@ -287,7 +303,9 @@ if __name__ == '__main__':
         PretrainCallback(num_epochs)])
 
     # evaluate predictive model
-    mdl_mean, mdl_std, mdl_samples = mdl.predictive_moments_and_samples(x_eval)
+    mdl.num_mc_samples = 2000
+    mdl_mean, mdl_var = mdl.predictive_central_moments(x_eval)
+    mdl_mean, mdl_std = mdl_mean.numpy(), mdl_var.numpy() ** 0.5
 
     # plot results for toy data
     fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, args.model)
