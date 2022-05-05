@@ -9,7 +9,7 @@ from abc import ABC
 from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
-from callbacks import PretrainCallback, RegressionCallback
+from callbacks import RegressionCallback
 from regression_data import generate_toy_data
 
 
@@ -19,7 +19,7 @@ for gpu in tf.config.list_physical_devices('GPU'):
 tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU')[0], 'GPU')
 
 
-def neural_network(d_in, d_out, n_hidden=2, d_hidden=50, f_hidden='elu', f_out=None, name=None, **kwargs):
+def neural_network(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_out=None, name=None, **kwargs):
     assert isinstance(d_in, int) and d_in > 0
     assert isinstance(d_hidden, int) and d_hidden > 0
     assert isinstance(d_out, int) and d_out > 0
@@ -27,14 +27,15 @@ def neural_network(d_in, d_out, n_hidden=2, d_hidden=50, f_hidden='elu', f_out=N
     nn.add(tf.keras.layers.InputLayer(d_in))
     for _ in range(n_hidden):
         nn.add(tf.keras.layers.Dense(d_hidden, f_hidden))
+        nn.add(tf.keras.layers.Dropout(rate))
     nn.add(tf.keras.layers.Dense(d_out, f_out))
     return nn
 
 
 class HeteroscedasticRegression(tf.keras.Model):
 
-    def __init__(self, optimization, y_mean=0.0, y_var=1.0, **kwargs):
-        tf.keras.Model.__init__(self, **kwargs)
+    def __init__(self, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
+        tf.keras.Model.__init__(self, name=kwargs.get('name'))
 
         # save optimization method
         self.optimization = optimization
@@ -156,8 +157,8 @@ class HeteroscedasticRegression(tf.keras.Model):
 
 class Normal(HeteroscedasticRegression, ABC):
 
-    def __init__(self, dim_x, dim_y, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
-        HeteroscedasticRegression.__init__(self, optimization, y_mean, y_var, name='Normal')
+    def __init__(self, dim_x, dim_y, **kwargs):
+        HeteroscedasticRegression.__init__(self, name='Normal', **kwargs)
 
         # define parameter networks
         self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mean', **kwargs)
@@ -167,9 +168,32 @@ class Normal(HeteroscedasticRegression, ABC):
         return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
 
     def predictive_moments_and_samples(self, x):
-        p_x_y = tfp.distributions.MultivariateNormalDiag(loc=self.de_whiten_mean(self.mean(x)),
-                                                         scale_diag=self.de_whiten_stddev(self.precision(x) ** -0.5))
-        return p_x_y.mean().numpy(), p_x_y.stddev().numpy(), p_x_y.sample().numpy()
+        px_y = tfp.distributions.MultivariateNormalDiag(loc=self.de_whiten_mean(self.mean(x)),
+                                                        scale_diag=self.de_whiten_stddev(self.precision(x) ** -0.5))
+        return px_y.mean().numpy(), px_y.stddev().numpy(), px_y.sample().numpy()
+
+
+class MonteCarloDropout(HeteroscedasticRegression, ABC):
+
+    def __init__(self, dim_x, dim_y, **kwargs):
+        HeteroscedasticRegression.__init__(self, name='MonteCarloDropout', **kwargs)
+
+        # define parameter networks
+        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.2, name='mean', **kwargs)
+        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.2, name='precision', **kwargs)
+
+    def call(self, inputs, **kwargs):
+        return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
+
+    def predictive_moments_and_samples(self, x):
+        means = tf.stack([self.mean(x) for _ in range(self.num_mc_samples)], axis=-1)
+        variances = tf.stack([self.precision(x) ** -1 for _ in range(self.num_mc_samples)], axis=-1)
+        predictive_mean = self.de_whiten_mean(tf.reduce_mean(means, axis=-1))
+        predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=-1) - tf.reduce_mean(means, axis=-1) ** 2
+        predictive_stddev = self.de_whiten_stddev(predictive_variance ** 0.5)
+        # px_y = tfp.distributions.MultivariateNormalDiag(loc=self.de_whiten_mean(self.mean(x)),
+        #                                                  scale_diag=self.de_whiten_stddev(self.precision(x) ** -0.5))
+        return predictive_mean.numpy(), predictive_stddev.numpy(), None
 
 
 def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, title):
@@ -237,6 +261,8 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'Normal':
         MODEL = Normal
+    if args.model == 'MonteCarloDropout':
+        MODEL = MonteCarloDropout
     else:
         raise NotImplementedError
 
@@ -260,8 +286,7 @@ if __name__ == '__main__':
         RegressionCallback(num_epochs),
         PretrainCallback(num_epochs)])
 
-    # evaluate predictive model with increased Monte-Carlo samples (if sampling is used by the particular model)
-    mdl.num_mc_samples = 2000
+    # evaluate predictive model
     mdl_mean, mdl_std, mdl_samples = mdl.predictive_moments_and_samples(x_eval)
 
     # plot results for toy data
