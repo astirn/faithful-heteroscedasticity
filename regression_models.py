@@ -298,9 +298,9 @@ if __name__ == '__main__':
 
     # train model
     num_epochs = int(15e3)
-    hist = mdl.fit(x=ds_train, epochs=num_epochs, verbose=0, callbacks=[
-        RegressionCallback(num_epochs),
-        PretrainCallback(num_epochs)])
+    hist = mdl.fit(x=ds_train, validation_data=ds_train, epochs=num_epochs, verbose=0, callbacks=[
+        RegressionCallback(same_line=True, early_stop_patience=1000)
+    ])
 
     # evaluate predictive model
     mdl.num_mc_samples = 2000
