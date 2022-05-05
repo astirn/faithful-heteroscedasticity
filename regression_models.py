@@ -324,9 +324,9 @@ if __name__ == '__main__':
     mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[tf.keras.metrics.RootMeanSquaredError()])
 
     # train model
-    num_epochs = int(15e3)
-    hist = mdl.fit(x=ds_train, validation_data=ds_train, epochs=num_epochs, verbose=0, callbacks=[
-        RegressionCallback(same_line=True, early_stop_patience=1000)
+    validation_freq = 500
+    hist = mdl.fit(x=ds_train, epochs=int(15e3), verbose=0, callbacks=[
+        RegressionCallback(validation_freq=validation_freq, use_train_as_valid=True, early_stop_patience=3),
     ])
 
     # evaluate predictive model
