@@ -196,10 +196,10 @@ class MonteCarloDropout(HeteroscedasticRegression, ABC):
         return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
 
     def predictive_central_moments(self, x):
-        means = tf.stack([self.mean(x, training=True) for _ in range(self.num_mc_samples)], axis=-1)
-        variances = tf.stack([self.precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=-1)
-        predictive_mean = tf.reduce_mean(means, axis=-1)
-        predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=-1) - tf.reduce_mean(means, axis=-1) ** 2
+        means = tf.stack([self.mean(x, training=True) for _ in range(self.num_mc_samples)], axis=0)
+        variances = tf.stack([self.precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=0)
+        predictive_mean = tf.reduce_mean(means, axis=0)
+        predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=0) - tf.reduce_mean(means, axis=0) ** 2
 
         return self.de_whiten_mean(predictive_mean), self.de_whiten_variance(predictive_variance)
 
