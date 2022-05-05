@@ -142,8 +142,8 @@ class HeteroscedasticRegression(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         # update metrics
-        y = tf.where(tf.greater(tf.rank(mean), tf.rank(data['y'])), tf.expand_dims(data['y'], axis=0), data['y'])
-        self.compiled_metrics.update_state(y, self.de_whiten_mean(mean))
+        mean, variance = self.predictive_central_moments(data['x'])
+        self.compiled_metrics.update_state(data['y'], mean)
 
         return {m.name: m.result() for m in self.metrics}
 
