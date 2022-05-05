@@ -70,7 +70,7 @@ class HeteroscedasticRegression(tf.keras.Model):
             mean, precision = self.call(data, training=True)
             py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
             ll = py_x.log_prob(self.whiten_targets(data['y']))
-            loss = tf.reduce_mean(-ll)
+            loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
         gradients = tape.gradient(loss, self.trainable_variables)
 
         return mean, precision, gradients
@@ -84,7 +84,7 @@ class HeteroscedasticRegression(tf.keras.Model):
             py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=precision ** -0.5)
             y = self.whiten_targets(data['y'])
             error = (y - mean)
-            loss = tf.reduce_mean(0.5 * error ** 2 - py_x.log_prob(y))
+            loss = tf.reduce_sum(tf.reduce_mean(0.5 * tf.reduce_sum(error ** 2, axis=-1) - py_x.log_prob(y), axis=-1))
         gradients = tape.gradient(loss, self.trainable_variables)
 
         # if we are debugging, make sure our gradient assumptions hold
@@ -92,9 +92,9 @@ class HeteroscedasticRegression(tf.keras.Model):
             dl_dm_automatic = tape.gradient(loss, mean)
             dl_dm_expected = -error / dim_batch
             tf.assert_less(tf.abs(dl_dm_automatic - dl_dm_expected), 1e-5)
-            dl_dl_automatic = tape.gradient(loss, precision)
-            dl_dl_expected = 0.5 * (error ** 2 - precision ** -1) / dim_batch
-            tf.assert_less(tf.abs(dl_dl_automatic - dl_dl_expected), 1e-5)
+            dl_dp_automatic = tape.gradient(loss, precision)
+            dl_dp_expected = 0.5 * (error ** 2 - precision ** -1) / dim_batch
+            tf.assert_less(tf.abs(dl_dp_automatic - dl_dp_expected), 1e-5)
 
         return mean, precision, gradients
 
@@ -142,7 +142,8 @@ class HeteroscedasticRegression(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         # update metrics
-        self.compiled_metrics.update_state(data['y'], self.de_whiten_mean(mean))
+        y = tf.where(tf.greater(tf.rank(mean), tf.rank(data['y'])), tf.expand_dims(data['y'], axis=0), data['y'])
+        self.compiled_metrics.update_state(y, self.de_whiten_mean(mean))
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -159,8 +160,8 @@ class Normal(HeteroscedasticRegression, ABC):
         HeteroscedasticRegression.__init__(self, name='Normal', **kwargs)
 
         # define parameter networks
-        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mean', **kwargs)
-        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='precision', **kwargs)
+        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
 
     def call(self, inputs, **kwargs):
         return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
@@ -188,8 +189,8 @@ class MonteCarloDropout(HeteroscedasticRegression, ABC):
         self.num_mc_samples = num_mc_samples
 
         # define parameter networks
-        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.1, name='mean', **kwargs)
-        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.1, name='precision', **kwargs)
+        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.1, name='mu', **kwargs)
+        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.1, name='lambda', **kwargs)
 
     def call(self, inputs, **kwargs):
         return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
@@ -199,6 +200,34 @@ class MonteCarloDropout(HeteroscedasticRegression, ABC):
         variances = tf.stack([self.precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=-1)
         predictive_mean = tf.reduce_mean(means, axis=-1)
         predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=-1) - tf.reduce_mean(means, axis=-1) ** 2
+
+        return self.de_whiten_mean(predictive_mean), self.de_whiten_variance(predictive_variance)
+
+    def predictive_distribution(self, x):
+        raise NotImplementedError
+
+
+class DeepEnsemble(HeteroscedasticRegression, ABC):
+
+    def __init__(self, dim_x, dim_y, M, **kwargs):
+        HeteroscedasticRegression.__init__(self, name='DeepEnsemble', **kwargs)
+
+        # define parameter networks
+        self.mean = \
+            [neural_network(dim_x, dim_y, f_out=None, name='mu_' + str(i + 1), **kwargs) for i in range(M)]
+        self.precision = \
+            [neural_network(dim_x, dim_y, f_out='softplus', name='lambda_' + str(i + 1), **kwargs) for i in range(M)]
+
+    def call(self, inputs, **kwargs):
+        means = tf.stack([mean(inputs['x'], **kwargs) for mean in self.mean], axis=0)
+        precisions = tf.stack([precision(inputs['x'], **kwargs) for precision in self.precision], axis=0)
+        return means, precisions
+
+    def predictive_central_moments(self, x):
+        means = tf.stack([mean(x, training=False) for mean in self.mean], axis=0)
+        variances = tf.stack([precision(x, training=False) ** -1 for precision in self.precision], axis=0)
+        predictive_mean = tf.reduce_mean(means, axis=0)
+        predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=0) - tf.reduce_mean(means, axis=0) ** 2
 
         return self.de_whiten_mean(predictive_mean), self.de_whiten_variance(predictive_variance)
 
@@ -273,6 +302,8 @@ if __name__ == '__main__':
         MODEL = Normal
     elif args.model == 'MonteCarloDropout':
         MODEL = MonteCarloDropout
+    elif args.model == 'DeepEnsemble':
+        MODEL = DeepEnsemble
     else:
         raise NotImplementedError
 
@@ -283,7 +314,8 @@ if __name__ == '__main__':
         optimization=args.optimization,
         y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
         y_var=tf.constant([y_train.var()], dtype=tf.float32),
-        num_mc_samples=50
+        num_mc_samples=20,
+        M=10,
     )
 
     # build the model
