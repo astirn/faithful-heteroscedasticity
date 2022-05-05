@@ -209,14 +209,15 @@ class MonteCarloDropout(HeteroscedasticRegression, ABC):
 
 class DeepEnsemble(HeteroscedasticRegression, ABC):
 
-    def __init__(self, dim_x, dim_y, M, **kwargs):
+    def __init__(self, dim_x, dim_y, num_ensembles, **kwargs):
         HeteroscedasticRegression.__init__(self, name='DeepEnsemble', **kwargs)
 
         # define parameter networks
-        self.mean = \
-            [neural_network(dim_x, dim_y, f_out=None, name='mu_' + str(i + 1), **kwargs) for i in range(M)]
-        self.precision = \
-            [neural_network(dim_x, dim_y, f_out='softplus', name='lambda_' + str(i + 1), **kwargs) for i in range(M)]
+        self.mean, self.precision = [], []
+        for i in range(num_ensembles):
+            s = str(i + 1)
+            self.mean += [neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mu_' + s, **kwargs)]
+            self.precision += [neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda_' + s, **kwargs)]
 
     def call(self, inputs, **kwargs):
         means = tf.stack([mean(inputs['x'], **kwargs) for mean in self.mean], axis=0)
@@ -315,7 +316,7 @@ if __name__ == '__main__':
         y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
         y_var=tf.constant([y_train.var()], dtype=tf.float32),
         num_mc_samples=20,
-        M=10,
+        num_ensembles=10,
     )
 
     # build the model
@@ -334,5 +335,5 @@ if __name__ == '__main__':
     mdl_mean, mdl_std = mdl_mean.numpy(), mdl_var.numpy() ** 0.5
 
     # plot results for toy data
-    fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, args.model)
+    fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, args.model + ' ' + mdl.optimization)
     plt.show()
