@@ -193,15 +193,15 @@ class MonteCarloDropout(HeteroscedasticRegression, ABC):
         self.num_mc_samples = num_mc_samples
 
         # define parameter networks
-        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.1, name='mu', **kwargs)
-        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.1, name='lambda', **kwargs)
+        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.1, name='mu', **kwargs)
+        self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.1, name='lambda', **kwargs)
 
     def call(self, inputs, **kwargs):
-        return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
+        return self.f_mean(inputs['x'], **kwargs), self.f_precision(inputs['x'], **kwargs)
 
     def predictive_central_moments(self, x):
-        means = tf.stack([self.mean(x, training=True) for _ in range(self.num_mc_samples)], axis=0)
-        variances = tf.stack([self.precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=0)
+        means = tf.stack([self.f_mean(x, training=True) for _ in range(self.num_mc_samples)], axis=0)
+        variances = tf.stack([self.f_precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=0)
         predictive_mean = tf.reduce_mean(means, axis=0)
         predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=0) - tf.reduce_mean(means, axis=0) ** 2
 
