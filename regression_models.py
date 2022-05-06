@@ -294,8 +294,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # load data
-    x_train, y_train, x_eval, true_mean, true_std = generate_toy_data(sparse=bool(args.sparse))
+    x_train, y_train, _, _, _ = generate_toy_data(sparse=bool(args.sparse))
     ds_train = tf.data.Dataset.from_tensor_slices({'x': x_train, 'y': y_train}).batch(x_train.shape[0])
+    x_valid, y_valid, x_eval, true_mean, true_std = generate_toy_data(sparse=bool(args.sparse))
+    ds_valid = tf.data.Dataset.from_tensor_slices({'x': x_valid, 'y': y_valid}).batch(x_valid.shape[0])
 
     # pick the appropriate model
     plot_title = args.model
@@ -324,9 +326,8 @@ if __name__ == '__main__':
     mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[tf.keras.metrics.RootMeanSquaredError()])
 
     # train model
-    validation_freq = 500
-    hist = mdl.fit(x=ds_train, epochs=int(15e3), verbose=0, callbacks=[
-        RegressionCallback(validation_freq=validation_freq, use_train_as_valid=True, early_stop_patience=3),
+    hist = mdl.fit(x=ds_train, validation_data=ds_valid, epochs=int(20e3), verbose=0, callbacks=[
+        RegressionCallback(validation_freq=500, early_stop_patience=6),
     ])
 
     # evaluate predictive model

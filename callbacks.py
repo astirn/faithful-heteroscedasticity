@@ -4,18 +4,16 @@ import tensorflow as tf
 
 class RegressionCallback(tf.keras.callbacks.Callback):
 
-    def __init__(self, validation_freq=0, use_train_as_valid=False, early_stop_patience=0):
+    def __init__(self, validation_freq=0, early_stop_patience=0):
         """
         Custom performance monitoring callback with early stopping
         :param validation_freq: at which epoch frequency to print and do model checking (must align with keras fit)
-        :param use_train_as_valid: whether to treat training data as validation data
         :param early_stop_patience: early stopping patience (a zero or negative value disables early stopping)
         """
         super().__init__()
 
         # configure and initialize
         self.validation_freq = validation_freq
-        self.use_train_as_valid = use_train_as_valid
         self.patience = early_stop_patience
         self.nan_inf = False
         self.wait = 0
@@ -37,7 +35,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
 
             # get training and validation performance
             train_rmse = logs['root_mean_squared_error']
-            valid_rmse = train_rmse if self.use_train_as_valid else logs['val_root_mean_squared_error']
+            valid_rmse = logs['val_root_mean_squared_error']
 
             # update string
             update_string = 'Train RMSE = {:.4f} | '.format(train_rmse)
