@@ -19,7 +19,7 @@ for gpu in tf.config.list_physical_devices('GPU'):
 tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU')[0], 'GPU')
 
 
-def neural_network(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_out=None, name=None, **kwargs):
+def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_out=None, name=None, **kwargs):
     assert isinstance(d_in, int) and d_in > 0
     assert isinstance(d_hidden, int) and d_hidden > 0
     assert isinstance(d_out, int) and d_out > 0
@@ -73,7 +73,7 @@ class HeteroscedasticRegression(tf.keras.Model):
             loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
         gradients = tape.gradient(loss, self.trainable_variables)
 
-        return mean, precision, gradients
+        return gradients
 
     def second_order_gradients_mean(self, data):
 
@@ -96,50 +96,54 @@ class HeteroscedasticRegression(tf.keras.Model):
             dl_dp_expected = 0.5 * (error ** 2 - precision ** -1) / dim_batch
             tf.assert_less(tf.abs(dl_dp_automatic - dl_dp_expected), 1e-5)
 
-        return mean, precision, gradients
+        return gradients
 
-    def second_order_gradients_diag(self, data, diag):
+    def second_order_gradients_diag(self, data, f_mean, f_precision, diag):
         
         # take necessary gradients
         dim_batch = tf.cast(tf.shape(data['x'])[0], tf.float32)
+        trainable_variables = f_mean.trainable_variables + f_precision.trainable_variables
         with tf.GradientTape(persistent=True) as tape2:
             with tf.GradientTape(persistent=True) as tape1:
-                mean, precision = self.call(data, training=True)
-                mean_precision = tf.stack(self.call(data, training=True), axis=-1)
+                mean, precision = f_mean.call(data, training=True), f_precision.call(data, training=True)
+                mean_precision = tf.stack([mean, precision], axis=-1)
                 py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-                nll = -py_x.log_prob(self.whiten_targets(data['y']))
-                loss = tf.reduce_mean(nll)
-            dnll_dm = tape1.gradient(loss, mean)
-            dnll_dp = tape1.gradient(loss, precision)
-            dmp_dnet = tape1.jacobian(mean_precision, self.trainable_variables)
-        d2nll_dm2 = tape2.gradient(dnll_dm, mean) * dim_batch
-        d2nll_dp2 = tape2.gradient(dnll_dp, precision) * dim_batch
+                loss = tf.reduce_sum(tf.reduce_mean(-py_x.log_prob(self.whiten_targets(data['y'])), axis=-1))
+            dl_dm = tape1.gradient(loss, mean)
+            dl_dp = tape1.gradient(loss, precision)
+            dmp_dnet = tape1.jacobian(mean_precision, trainable_variables)
+        d2nll_dm2 = tape2.gradient(dl_dm, mean) * dim_batch
+        d2nll_dp2 = tape2.gradient(dl_dp, precision) * dim_batch
         tf.assert_greater(d2nll_dp2, 0.0)
         d2nll_dp2 = tf.clip_by_value(d2nll_dp2, 1e-3, np.inf)
 
         # apply second order information
         if diag:
-            dl_dmv = tf.stack([dnll_dm / d2nll_dm2, dnll_dp / d2nll_dp2], axis=-1)
+            dl_dmv = tf.stack([dl_dm / d2nll_dm2, dl_dp / d2nll_dp2], axis=-1)
         else:
-            d2nll_dmdp = tape2.gradient(dnll_dm, precision)
+            d2nll_dmdp = tape2.gradient(dl_dm, precision)
             H = tf.reshape(tf.concat([d2nll_dm2, d2nll_dmdp, d2nll_dmdp, d2nll_dp2], axis=-1), [-1, 2, 2])
-            dl_dmv = tf.transpose(tf.linalg.solve(H, tf.stack([dnll_dm, dnll_dp], axis=-2)), [0, 2, 1])
+            dl_dmv = tf.transpose(tf.linalg.solve(H, tf.stack([dl_dm, dl_dp], axis=-2)), [0, 2, 1])
         gradients = [tf.tensordot(dl_dmv, d, axes=[[0, 1, 2], [0, 1, 2]]) for d in dmp_dnet]
 
-        return mean, precision, gradients
+        return gradients, trainable_variables
 
     def train_step(self, data):
         if self.optimization == 'first-order':
-            mean, precision, gradients = self.first_order_gradients(data)
+            self.optimizer.apply_gradients(zip(self.first_order_gradients(data), self.trainable_variables))
         elif self.optimization == 'second-order-mean':
-            mean, precision, gradients = self.second_order_gradients_mean(data)
+            self.optimizer.apply_gradients(zip(self.second_order_gradients_mean(data), self.trainable_variables))
         elif self.optimization in {'second-order-diag', 'second-order-full'}:
-            mean, precision, gradients = self.second_order_gradients_diag(data, diag='diag' in self.optimization)
+            diag = 'diag' in self.optimization
+            if isinstance(self.f_mean, (list, tuple)) and isinstance(self.f_precision, (list, tuple)):
+                for f_mean, f_precision in zip(self.f_mean, self.f_precision):
+                    gradients, network_params = self.second_order_gradients_diag(data, f_mean, f_precision, diag)
+                    self.optimizer.apply_gradients(zip(gradients, network_params))
+            else:
+                gradients, network_params = self.second_order_gradients_diag(data, self.f_mean, self.f_precision, diag)
+                self.optimizer.apply_gradients(zip(gradients, network_params))
         else:
             raise NotImplementedError
-
-        # update parameters
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         # update metrics
         mean, variance = self.predictive_central_moments(data['x'])
@@ -160,21 +164,21 @@ class Normal(HeteroscedasticRegression, ABC):
         HeteroscedasticRegression.__init__(self, name='Normal', **kwargs)
 
         # define parameter networks
-        self.mean = neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
-        self.precision = neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
+        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+        self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
 
     def call(self, inputs, **kwargs):
-        return self.mean(inputs['x'], **kwargs), self.precision(inputs['x'], **kwargs)
+        return self.f_mean(inputs['x'], **kwargs), self.f_precision(inputs['x'], **kwargs)
 
     def predictive_central_moments(self, x):
-        mean = self.de_whiten_mean(self.mean(x, training=False))
-        variance = self.de_whiten_precision(self.precision(x, training=False)) ** -1
+        mean = self.de_whiten_mean(self.f_mean(x, training=False))
+        variance = self.de_whiten_precision(self.f_precision(x, training=False)) ** -1
 
         return mean, variance
 
     def predictive_distribution(self, x):
-        mean = self.de_whiten_mean(self.mean(x, training=False))
-        stddev = self.de_whiten_precision(self.precision(x, training=False)) ** -0.5
+        mean = self.de_whiten_mean(self.f_mean(x, training=False))
+        stddev = self.de_whiten_precision(self.f_precision(x, training=False)) ** -0.5
         px_y = tfp.distributions.MultivariateNormalDiag(loc=mean, scale_diag=stddev)
 
         return px_y
@@ -213,20 +217,20 @@ class DeepEnsemble(HeteroscedasticRegression, ABC):
         HeteroscedasticRegression.__init__(self, name='DeepEnsemble', **kwargs)
 
         # define parameter networks
-        self.mean, self.precision = [], []
+        self.f_mean, self.f_precision = [], []
         for i in range(num_ensembles):
             s = str(i + 1)
-            self.mean += [neural_network(d_in=dim_x, d_out=dim_y, f_out=None, name='mu_' + s, **kwargs)]
-            self.precision += [neural_network(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda_' + s, **kwargs)]
+            self.f_mean += [param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu_' + s, **kwargs)]
+            self.f_precision += [param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda_' + s, **kwargs)]
 
     def call(self, inputs, **kwargs):
-        means = tf.stack([mean(inputs['x'], **kwargs) for mean in self.mean], axis=0)
-        precisions = tf.stack([precision(inputs['x'], **kwargs) for precision in self.precision], axis=0)
+        means = tf.stack([mean(inputs['x'], **kwargs) for mean in self.f_mean], axis=0)
+        precisions = tf.stack([precision(inputs['x'], **kwargs) for precision in self.f_precision], axis=0)
         return means, precisions
 
     def predictive_central_moments(self, x):
-        means = tf.stack([mean(x, training=False) for mean in self.mean], axis=0)
-        variances = tf.stack([precision(x, training=False) ** -1 for precision in self.precision], axis=0)
+        means = tf.stack([mean(x, training=False) for mean in self.f_mean], axis=0)
+        variances = tf.stack([precision(x, training=False) ** -1 for precision in self.f_precision], axis=0)
         predictive_mean = tf.reduce_mean(means, axis=0)
         predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=0) - tf.reduce_mean(means, axis=0) ** 2
 
