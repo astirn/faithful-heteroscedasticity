@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
+from metrics import RootMeanSquaredError
 from regression_data import generate_toy_data
 
 
