@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
-from metrics import RootMeanSquaredError
+from metrics import MeanLogLikelihood, RootMeanSquaredError
 from regression_data import generate_toy_data
 
 
@@ -129,6 +129,12 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         return gradients, trainable_variables
 
+    def update_metrics(self, data):
+        mean, variance = self.predictive_central_moments(data['x'])
+        log_prob = self.predictive_distribution(data['x']).log_prob(data['y'])[..., None]
+        mean_variance_ll = tf.concat([mean, variance, log_prob], axis=1)
+        self.compiled_metrics.update_state(data['y'], mean)
+
     def train_step(self, data):
         if self.optimization == 'first-order':
             self.optimizer.apply_gradients(zip(self.first_order_gradients(data), self.trainable_variables))
@@ -147,14 +153,14 @@ class HeteroscedasticRegression(tf.keras.Model):
             raise NotImplementedError
 
         # update metrics
-        mean, variance = self.predictive_central_moments(data['x'])
-        self.compiled_metrics.update_state(data['y'], mean)
+        self.update_metrics(data)
 
         return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
-        mean, variance = self.predictive_central_moments(data['x'])
-        self.compiled_metrics.update_state(data['y'], mean)
+
+        # update metrics
+        self.update_metrics(data)
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -328,7 +334,11 @@ if __name__ == '__main__':
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
-    mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[tf.keras.metrics.RootMeanSquaredError()])
+    mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
+        # MeanLogLikelihood(),
+        tf.metrics.RootMeanSquaredError(),
+        RootMeanSquaredError()
+    ])
 
     # train model
     hist = mdl.fit(x=ds_train, validation_data=ds_valid, epochs=int(20e3), verbose=0, callbacks=[
