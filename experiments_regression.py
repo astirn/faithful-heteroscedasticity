@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 
 from callbacks import RegressionCallback
-from metrics import MeanLogLikelihood, RootMeanSquaredError
+from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
 from sklearn import preprocessing
 from regression_data import create_or_load_fold
 from regression_models import Normal
@@ -59,7 +59,6 @@ for fold in np.unique(data['split']):
         ds_valid = ds_valid.shuffle(10000, reshuffle_each_iteration=True).batch(x_train.shape[0])
 
         # loop over the models and configurations
-
         for model_and_config in models_and_configs:
             print('********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
@@ -75,15 +74,19 @@ for fold in np.unique(data['split']):
                 **model_and_config['config']
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
-            model.compile(optimizer=optimizer, metrics=[MeanLogLikelihood(), RootMeanSquaredError()])
+            model.compile(optimizer=optimizer, metrics=[
+                MeanLogLikelihood(),
+                RootMeanSquaredError(),
+                ExpectationCalibrationError()
+            ])
 
             # train model
             hist = model.fit(x=ds_train, validation_data=ds_valid, epochs=int(20e3), verbose=0,
-                             callbacks=[RegressionCallback(validation_freq=1, early_stop_patience=1000)])
+                             callbacks=[RegressionCallback(validation_freq=1, early_stop_patience=250)])
 
-            # # test model
-            # print('Test RMSE = {:.4f}'.format(model.evaluate(ds_test, verbose=0)))
-
+            # test model
+            test_metrics = model.evaluate(ds_valid, verbose=0)
+            print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
 
 
         # # determine directory where to save model

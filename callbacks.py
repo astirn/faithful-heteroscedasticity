@@ -26,25 +26,22 @@ class RegressionCallback(tf.keras.callbacks.Callback):
         self.nan_inf = False
         self.wait = 0
         self.stopped_epoch = 0
-        self.best = np.inf
+        self.best = -np.inf
         self.best_weights = None
 
     def on_epoch_end(self, epoch, logs=None):
         epoch += 1
         if epoch % self.validation_freq == 0:
 
-            # get training and validation performance
-            train_rmse = logs['root_mean_squared_error']
-            valid_rmse = logs['val_root_mean_squared_error']
-
             # update string
-            update_string = 'Train RMSE = {:.4f} | '.format(train_rmse)
-            update_string += 'Validation RMSE = {:.4f}'.format(valid_rmse)
+            update_string = self.model.name + ' ' + self.model.optimization + ' | Epoch {:d}'.format(epoch)
+            for key, val in logs.items():
+                update_string += ' | {:s} = {:.4f}'.format(key, val)
 
             # early stopping logic
             if self.patience > 0:
-                if tf.less(valid_rmse, self.best):
-                    self.best = valid_rmse
+                if tf.greater(logs['val_LL'], self.best):
+                    self.best = logs['val_LL']
                     self.wait = 0
                     self.best_weights = self.model.get_weights()
                 else:
@@ -52,23 +49,23 @@ class RegressionCallback(tf.keras.callbacks.Callback):
                     if self.wait >= self.patience:
                         self.stopped_epoch = epoch
                         self.model.stop_training = True
-                update_string += ' | Best Validation RMSE = {:.4f}'.format(self.best)
+                update_string += ' | Best Validation LL = {:.4f}'.format(self.best)
                 update_string += ' | Patience: {:d}/{:d}'.format(self.wait, self.patience)
 
             # test for NaN and Inf
-            if tf.math.is_nan(train_rmse) or tf.math.is_inf(train_rmse):
+            if tf.math.is_nan(logs['LL']) or tf.math.is_inf(logs['LL']):
                 self.nan_inf = True
                 self.stopped_epoch = epoch
                 self.model.stop_training = True
 
             # print update
-            print('\r' + self.model.name + ' Epoch {:d} | '.format(epoch) + update_string, end='')
+            print('\r' + update_string, end='')
 
     def on_train_end(self, logs=None):
         if self.nan_inf:
             print('\nEpoch {:d}: NaN or Inf detected!'.format(self.stopped_epoch + 1))
         else:
-            print('\nEpoch {:d}: early stopping!'.format(self.stopped_epoch + 1))
-        if self.stopped_epoch > 1:
+            print('\nEpoch {:d}: Finished!'.format(self.stopped_epoch + 1))
+        if self.stopped_epoch > self.validation_freq:
             print('Restoring model weights from the end of the best epoch.')
             self.model.set_weights(self.best_weights)
