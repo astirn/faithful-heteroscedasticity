@@ -33,6 +33,16 @@ def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_
     return nn
 
 
+def parse_keras_inputs(data):
+    if isinstance(data, dict):
+        x, y = data['x'], data['y']
+    elif isinstance(data, tuple):
+        x, y = data
+    else:
+        raise NotImplementedError
+    return x, y
+
+
 class TargetScalings(object):
     def __init__(self, y_mean, y_var, **kwargs):
         self.y_mean = tf.constant(y_mean, dtype=tf.float32)
@@ -67,26 +77,26 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
         # save optimization method
         self.optimization = optimization
 
-    def first_order_gradients(self, data):
+    def first_order_gradients(self, x, y):
 
         # take necessary gradients
         with tf.GradientTape() as tape:
-            mean, precision = self.call(data['x'], training=True)
+            mean, precision = self.call(x, training=True)
             py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-            ll = py_x.log_prob(self.whiten_targets(data['y']))
+            ll = py_x.log_prob(self.whiten_targets(y))
             loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
         gradients = tape.gradient(loss, self.trainable_variables)
 
         return gradients
 
-    def second_order_gradients_mean(self, data):
+    def second_order_gradients_mean(self, x, y):
 
         # take necessary gradients
-        dim_batch = tf.cast(tf.shape(data['x'])[0], tf.float32)
+        dim_batch = tf.cast(tf.shape(x)[0], tf.float32)
         with tf.GradientTape(persistent=self.run_eagerly) as tape:
-            mean, precision = self.call(data['x'], training=True)
+            mean, precision = self.call(x, training=True)
             py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=precision ** -0.5)
-            y = self.whiten_targets(data['y'])
+            y = self.whiten_targets(y)
             error = (y - mean)
             loss = tf.reduce_sum(tf.reduce_mean(0.5 * tf.reduce_sum(error ** 2, axis=-1) - py_x.log_prob(y), axis=-1))
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -102,17 +112,17 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
 
         return gradients
 
-    def second_order_gradients_diag(self, data, f_mean, f_precision, diag):
+    def second_order_gradients_diag(self, x, y, f_mean, f_precision, diag):
         
         # take necessary gradients
-        dim_batch = tf.cast(tf.shape(data['x'])[0], tf.float32)
+        dim_batch = tf.cast(tf.shape(x)[0], tf.float32)
         trainable_variables = f_mean.trainable_variables + f_precision.trainable_variables
         with tf.GradientTape(persistent=True) as tape2:
             with tf.GradientTape(persistent=True) as tape1:
-                mean, precision = f_mean.call(data['x'], training=True), f_precision.call(data['x'], training=True)
+                mean, precision = f_mean.call(x, training=True), f_precision.call(x, training=True)
                 mean_precision = tf.stack([mean, precision], axis=-1)
                 py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-                loss = tf.reduce_mean(-py_x.log_prob(self.whiten_targets(data['y'])), axis=-1)
+                loss = tf.reduce_mean(-py_x.log_prob(self.whiten_targets(y)), axis=-1)
             dl_dm = tape1.gradient(loss, mean)
             dl_dp = tape1.gradient(loss, precision)
             dmp_dnet = tape1.jacobian(mean_precision, trainable_variables)
@@ -132,39 +142,41 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
 
         return gradients, trainable_variables
 
-    def update_metrics(self, data):
-        py_x = self.predictive_distribution(data['x'])
-        log_prob = py_x.log_prob(data['y'])
-        prob_errors = tfp.distributions.Normal(0, 1).cdf((data['y'] - py_x.mean()) / py_x.stddev())
-        predictor_values = pack_predictor_values(py_x.mean(), log_prob, prob_errors)
-        self.compiled_metrics.update_state(y_true=data['y'], y_pred=predictor_values)
+    def update_metrics(self, x, y):
+        py_x = self.predictive_distribution(x)
+        prob_errors = tfp.distributions.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def train_step(self, data):
+        x, y = parse_keras_inputs(data)
+
         if self.optimization == 'first-order':
-            self.optimizer.apply_gradients(zip(self.first_order_gradients(data), self.trainable_variables))
+            self.optimizer.apply_gradients(zip(self.first_order_gradients(x, y), self.trainable_variables))
         elif self.optimization == 'second-order-mean':
-            self.optimizer.apply_gradients(zip(self.second_order_gradients_mean(data), self.trainable_variables))
+            self.optimizer.apply_gradients(zip(self.second_order_gradients_mean(x, y), self.trainable_variables))
         elif self.optimization in {'second-order-diag', 'second-order-full'}:
             diag = 'diag' in self.optimization
             if isinstance(self.f_mean, (list, tuple)) and isinstance(self.f_precision, (list, tuple)):
                 for f_mean, f_precision in zip(self.f_mean, self.f_precision):
-                    gradients, network_params = self.second_order_gradients_diag(data, f_mean, f_precision, diag)
+                    gradients, network_params = self.second_order_gradients_diag(x, y, f_mean, f_precision, diag)
                     self.optimizer.apply_gradients(zip(gradients, network_params))
             else:
-                gradients, network_params = self.second_order_gradients_diag(data, self.f_mean, self.f_precision, diag)
+                gradients, network_params = self.second_order_gradients_diag(x, y, self.f_mean, self.f_precision, diag)
                 self.optimizer.apply_gradients(zip(gradients, network_params))
         else:
             raise NotImplementedError
 
         # update metrics
-        self.update_metrics(data)
+        self.update_metrics(x, y)
 
         return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
+        x, y = parse_keras_inputs(data)
 
         # update metrics
-        self.update_metrics(data)
+        self.update_metrics(x, y)
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -295,7 +307,7 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
         with tf.GradientTape() as tape:
 
             # amortized parameter networks
-            mu, alpha, beta = self.call(data['x'], training=True)
+            mu, alpha, beta = self.call(x, training=True)
 
             # variational family
             qp = tfp.distributions.Independent(tfp.distributions.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
@@ -309,14 +321,15 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
 
         # update metrics
-        self.update_metrics(data['y'], *self.call(data['x']))
+        self.update_metrics(y, *self.call(x))
 
         return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
+        x, y = parse_keras_inputs(data)
 
         # update metrics
-        self.update_metrics(data['y'], *self.call(data['x']))
+        self.update_metrics(y, *self.call(x))
 
         return {m.name: m.result() for m in self.metrics}
 

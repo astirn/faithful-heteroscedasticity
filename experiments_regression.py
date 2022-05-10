@@ -45,19 +45,11 @@ for fold in np.unique(data['split']):
         # data pipeline
         i_train = data['split'] != fold
         i_valid = data['split'] == fold
-        x_train, y_train = tf.constant(data['covariates'][i_train]), tf.constant(data['response'][i_train])
-        x_valid, y_valid = tf.constant(data['covariates'][i_valid]), tf.constant(data['response'][i_valid])
+        x_train, y_train = data['covariates'][i_train], tf.constant(data['response'][i_train])
+        x_valid, y_valid = data['covariates'][i_valid], tf.constant(data['response'][i_valid])
         x_scale = preprocessing.StandardScaler().fit(x_train)
-        x_train = x_scale.transform(x_train)
-        x_valid = x_scale.transform(x_valid)
-        # x_train, y_train = data['covariates'][i_train], data['response'][i_train]
-        # x_valid, y_valid = data['covariates'][i_valid], data['response'][i_valid]
-
-        # create TF data loaders
-        ds_train = tf.data.Dataset.from_tensor_slices({'x': x_train, 'y': y_train})
-        ds_train = ds_train.shuffle(10000, reshuffle_each_iteration=True).batch(x_train.shape[0])
-        ds_valid = tf.data.Dataset.from_tensor_slices({'x': x_valid, 'y': y_valid})
-        ds_valid = ds_valid.shuffle(10000, reshuffle_each_iteration=True).batch(x_train.shape[0])
+        x_train = tf.constant(x_scale.transform(x_train))
+        x_valid = tf.constant(x_scale.transform(x_valid))
 
         # loop over the models and configurations
         for model_and_config in models_and_configs:
@@ -82,11 +74,14 @@ for fold in np.unique(data['split']):
             ])
 
             # train model
-            hist = model.fit(x=ds_train, validation_data=ds_valid, epochs=int(20e3), verbose=0,
-                             callbacks=[RegressionCallback(validation_freq=1, early_stop_patience=250)])
+            valid_freq = 100
+            hist = model.fit(x=x_train, y=y_train,
+                             validation_data=(x_valid, y_valid), validation_freq=valid_freq,
+                             batch_size=x_train.shape[0], epochs=int(20e3), verbose=0,
+                             callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
 
             # test model
-            test_metrics = model.evaluate(ds_valid, verbose=0)
+            test_metrics = model.evaluate((x_valid, y_valid), verbose=0)
             print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
 
 
