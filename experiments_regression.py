@@ -8,7 +8,7 @@ from callbacks import RegressionCallback
 from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
 from sklearn import preprocessing
 from regression_data import create_or_load_fold
-from regression_models import Normal
+from regression_models import Normal, VariationalRegression
 
 # script arguments
 parser = argparse.ArgumentParser()
@@ -26,6 +26,7 @@ os.makedirs(exp_path, exist_ok=True)
 models_and_configs = [
     {'model': Normal, 'config': {'optimization': 'first-order'}},
     {'model': Normal, 'config': {'optimization': 'second-order-mean'}},
+    {'model': VariationalRegression, 'config': dict()},
     # {'model': Normal, 'config': {'optimization': 'second-order-diag'}},
     # {'model': Normal, 'config': {'optimization': 'second-order-full'}},
 ]

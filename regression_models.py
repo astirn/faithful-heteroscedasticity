@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
-from metrics import MeanLogLikelihood, RootMeanSquaredError
+from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
 from regression_data import generate_toy_data
 
 
@@ -33,15 +33,8 @@ def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_
     return nn
 
 
-class HeteroscedasticRegression(tf.keras.Model):
-
-    def __init__(self, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
-        tf.keras.Model.__init__(self, name=kwargs.get('name'))
-
-        # save optimization method
-        self.optimization = optimization
-
-        # save target scaling
+class TargetScalings(object):
+    def __init__(self, y_mean, y_var, **kwargs):
         self.y_mean = tf.constant(y_mean, dtype=tf.float32)
         self.y_var = tf.constant(y_var, dtype=tf.float32)
         self.y_std = tf.sqrt(self.y_var)
@@ -63,6 +56,16 @@ class HeteroscedasticRegression(tf.keras.Model):
 
     def de_whiten_log_precision(self, log_precision):
         return log_precision - tf.math.log(self.y_var)
+
+
+class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
+
+    def __init__(self, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
+        tf.keras.Model.__init__(self, name=kwargs.get('name'))
+        TargetScalings.__init__(self, y_mean, y_var)
+
+        # save optimization method
+        self.optimization = optimization
 
     def first_order_gradients(self, data):
 
@@ -177,12 +180,6 @@ class Normal(HeteroscedasticRegression, ABC):
     def call(self, x, **kwargs):
         return self.f_mean(x, **kwargs), self.f_precision(x, **kwargs)
 
-    def predictive_central_moments(self, x):
-        mean = self.de_whiten_mean(self.f_mean(x, training=False))
-        variance = self.de_whiten_precision(self.f_precision(x, training=False)) ** -1
-
-        return mean, variance
-
     def predictive_distribution(self, x):
         mean = self.de_whiten_mean(self.f_mean(x, training=False))
         stddev = self.de_whiten_precision(self.f_precision(x, training=False)) ** -0.5
@@ -245,6 +242,74 @@ class DeepEnsemble(HeteroscedasticRegression, ABC):
 
     def predictive_distribution(self, x):
         raise NotImplementedError
+
+
+class VariationalRegression(tf.keras.Model, TargetScalings):
+
+    def __init__(self, dim_x, dim_y, y_mean=0.0, y_var=1.0, **kwargs):
+        tf.keras.Model.__init__(self, name='Variational')
+        TargetScalings.__init__(self, y_mean, y_var)
+
+        self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([1.0], [1.0]), 1)
+
+        # build parameter networks
+        self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+        self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
+        self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
+
+    def expected_ll(self, y, mu, alpha, beta, whiten_targets):
+
+        # compute expected precision and log precision under the variational posterior
+        expected_precision = alpha / beta
+        expected_log_precision = tf.math.digamma(alpha) - tf.math.log(beta)
+
+        # whiten things accordingly
+        if whiten_targets:
+            y = self.whiten_targets(y)
+        else:
+            mu = self.de_whiten_mean(mu)
+            expected_precision = self.de_whiten_precision(expected_precision)
+            expected_log_precision = self.de_whiten_log_precision(expected_log_precision)
+
+        ll = 0.5 * (expected_log_precision - tf.math.log(2 * np.pi) - (y - mu) ** 2 * expected_precision)
+        return tf.reduce_sum(ll, axis=-1)
+
+    def call(self, x, **kwargs):
+        return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
+
+    def update_metrics(self, y, mu, alpha, beta):
+        loc = self.de_whiten_mean(mu)
+        p_y_x = tfp.distributions.StudentT(df=2 * alpha, loc=loc,
+                                           scale=self.de_whiten_stddev(tf.sqrt(beta / alpha)))
+        predictions = tf.concat([p_y_x.mean(), p_y_x.variance(), p_y_x.log_prob(y)], axis=1)
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictions)
+
+    def train_step(self, data):
+        with tf.GradientTape() as tape:
+            mu, alpha, beta = self.call(data['x'], training=True)
+
+            # variational family
+            qp = tfp.distributions.Independent(tfp.distributions.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
+
+            # use negative evidence lower bound as minimization objective
+            ell = self.expected_ll(data['y'], mu, alpha, beta, whiten_targets=True)
+            dkl = qp.kl_divergence(self.p_lambda)
+            loss = -tf.reduce_mean(ell - dkl)
+
+        # update model parameters
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+
+        # update metrics
+        self.update_metrics(data['y'], *self.call(data['x']))
+
+        return {m.name: m.result() for m in self.metrics}
+
+    def test_step(self, data):
+
+        # update metrics
+        self.update_metrics(data['y'], *self.call(data['x']))
+
+        return {m.name: m.result() for m in self.metrics}
 
 
 def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, title):
@@ -318,6 +383,8 @@ if __name__ == '__main__':
         MODEL = MonteCarloDropout
     elif args.model == 'DeepEnsemble':
         MODEL = DeepEnsemble
+    elif args.model == 'VariationalRegression':
+        MODEL = VariationalRegression
     else:
         raise NotImplementedError
 
