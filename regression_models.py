@@ -413,7 +413,7 @@ if __name__ == '__main__':
     mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
         MeanLogLikelihood(),
         RootMeanSquaredError(),
-        ExpectationCalibrationError()
+        ExpectationCalibrationError(),
     ])
 
     # train model

@@ -7,6 +7,18 @@ def pack_predictor_values(mean, ll, prob_errors):
     return tf.concat([mean, ll, prob_errors], axis=1)
 
 
+def unpack_predictor_values(predictor_values, request):
+    predictor_values= tf.split(predictor_values, num_or_size_splits=3, axis=1)
+    if request == 'mean':
+        return predictor_values[0]
+    elif request == 'll':
+        return predictor_values[1]
+    elif request == 'prob_errors':
+        return predictor_values[2]
+    else:
+        raise NotImplementedError
+
+
 class Mean(tf.keras.metrics.Metric):
     def __init__(self, name, dtype=None):
         super(Mean, self).__init__(name, dtype=dtype)
@@ -28,7 +40,7 @@ class MeanLogLikelihood(Mean):
         self.count = self.add_weight('count', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        ll = tf.cast(y_pred[:, 1], self._dtype)
+        ll = tf.cast(tf.reduce_sum(unpack_predictor_values(y_pred, 'll'), axis=-1), self._dtype)
         return super(MeanLogLikelihood, self).update_state(ll, sample_weight=sample_weight)
 
     def result(self):
@@ -43,9 +55,8 @@ class RootMeanSquaredError(Mean):
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_true = tf.cast(y_true, self._dtype)
-        y_pred = tf.cast(y_pred[:, 0], self._dtype)
-        y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
-        sq_err = tf.math.squared_difference(y_pred, y_true)
+        mean = tf.cast(unpack_predictor_values(y_pred, 'mean'), self._dtype)
+        sq_err = tf.reduce_sum(tf.math.squared_difference(y_true, mean), axis=-1)
         return super(RootMeanSquaredError, self).update_state(values=sq_err, sample_weight=sample_weight)
 
     def result(self):
@@ -60,7 +71,8 @@ class ExpectationCalibrationError(Mean):
         self.bin_counts = [self.add_weight('count_{:d}'.format(i), initializer='zeros') for i in range(num_bins)]
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        prob_errors = tf.cast(y_pred[:, 2], self._dtype)
+        prob_errors = tf.cast(unpack_predictor_values(y_pred, 'prob_errors'), self._dtype)
+        prob_errors = tf.reshape(prob_errors, [-1])
         sum_values = tf.split(tfp.stats.histogram(prob_errors, self.edges), len(self.bin_counts))
         sum_values = [tf.squeeze(x) for x in sum_values]
         with tf.control_dependencies(sum_values):
