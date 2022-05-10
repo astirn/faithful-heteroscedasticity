@@ -3,6 +3,10 @@ import tensorflow_probability as tfp
 from keras.utils import losses_utils
 
 
+def pack_predictor_values(mean, ll, prob_errors):
+    return tf.concat([mean, ll, prob_errors], axis=1)
+
+
 class Mean(tf.keras.metrics.Metric):
     def __init__(self, name, dtype=None):
         super(Mean, self).__init__(name, dtype=dtype)
@@ -24,7 +28,7 @@ class MeanLogLikelihood(Mean):
         self.count = self.add_weight('count', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        ll = tf.cast(y_pred[:, 2], self._dtype)
+        ll = tf.cast(y_pred[:, 1], self._dtype)
         return super(MeanLogLikelihood, self).update_state(ll, sample_weight=sample_weight)
 
     def result(self):
@@ -51,17 +55,13 @@ class RootMeanSquaredError(Mean):
 class ExpectationCalibrationError(Mean):
     def __init__(self, num_bins=6, dtype=None):
         super(ExpectationCalibrationError, self).__init__('ECE', dtype=dtype)
-        self.edges = tf.stack([tfp.distributions.Normal(0, 1).quantile(x / num_bins) for x in range(num_bins + 1)])
-        self.probs = tfp.distributions.Normal(0, 1).cdf(self.edges)
-        self.probs = self.probs[1:] - self.probs[:-1]
+        self.edges = tf.stack([x / num_bins for x in range(num_bins + 1)])
+        self.probs = self.edges[1:] - self.edges[:-1]
         self.bin_counts = [self.add_weight('count_{:d}'.format(i), initializer='zeros') for i in range(num_bins)]
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        y_true = tf.cast(y_true, self._dtype)
-        mean = tf.cast(y_pred[:, 0], self._dtype)
-        variance = tf.cast(y_pred[:, 1], self._dtype)
-        standard_errors = (y_true - mean) / variance ** 0.5
-        sum_values = tf.split(tfp.stats.histogram(standard_errors, self.edges), len(self.bin_counts))
+        prob_errors = tf.cast(y_pred[:, 2], self._dtype)
+        sum_values = tf.split(tfp.stats.histogram(prob_errors, self.edges), len(self.bin_counts))
         sum_values = [tf.squeeze(x) for x in sum_values]
         with tf.control_dependencies(sum_values):
             for i, bin_count in enumerate(self.bin_counts):

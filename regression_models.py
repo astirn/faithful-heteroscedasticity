@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
-from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
+from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
 from regression_data import generate_toy_data
 
 
@@ -134,9 +134,10 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
 
     def update_metrics(self, data):
         py_x = self.predictive_distribution(data['x'])
-        log_prob = py_x.log_prob(data['y'])[..., None]
-        predictions = tf.concat([py_x.mean(), py_x.variance(), log_prob], axis=1)
-        self.compiled_metrics.update_state(y_true=data['y'], y_pred=predictions)
+        log_prob = py_x.log_prob(data['y'])
+        prob_errors = tfp.distributions.Normal(0, 1).cdf((data['y'] - py_x.mean()) / py_x.stddev())
+        predictor_values = pack_predictor_values(py_x.mean(), log_prob, prob_errors)
+        self.compiled_metrics.update_state(y_true=data['y'], y_pred=predictor_values)
 
     def train_step(self, data):
         if self.optimization == 'first-order':
@@ -183,7 +184,7 @@ class Normal(HeteroscedasticRegression, ABC):
     def predictive_distribution(self, x):
         mean = self.de_whiten_mean(self.f_mean(x, training=False))
         stddev = self.de_whiten_precision(self.f_precision(x, training=False)) ** -0.5
-        return tfp.distributions.MultivariateNormalDiag(loc=mean, scale_diag=stddev)
+        return tfp.distributions.Normal(loc=mean, scale=stddev)
 
 
 class MonteCarloDropout(HeteroscedasticRegression, ABC):
@@ -286,8 +287,9 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
         loc = self.de_whiten_mean(mu)
         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
         py_x = tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
-        predictions = tf.concat([py_x.mean(), py_x.variance(), py_x.log_prob(y)], axis=1)
-        self.compiled_metrics.update_state(y_true=y, y_pred=predictions)
+        prob_errors = tfp.distributions.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / py_x.stddev())
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def train_step(self, data):
         with tf.GradientTape() as tape:
