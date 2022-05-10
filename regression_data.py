@@ -1,10 +1,12 @@
-import os
 import glob
+import os
 import pickle
-import zipfile
 import warnings
+import zipfile
+
 import numpy as np
 import pandas as pd
+
 from urllib import request
 
 
@@ -167,7 +169,7 @@ def load_data(data_dir, dir_after_unzip, data_file, parse_args, **kwargs):
 
     # save data
     with open(os.path.join(save_dir, save_dir.split(os.sep)[-1] + '.pkl'), 'wb') as f:
-        pickle.dump({'data': x, 'target': y}, f)
+        pickle.dump({'covariates': x, 'response': y}, f)
 
 
 def generate_toy_data(num_samples=500, sparse=False):
@@ -182,8 +184,7 @@ def generate_toy_data(num_samples=500, sparse=False):
         x_data = np.random.uniform(0, 10, size=num_samples)
     else:
         x_data = np.random.uniform(2.5, 7.5, size=num_samples - 2)
-    noise = np.random.normal(scale=data_std(x_data))
-    y_data = data_mean(x_data) + noise
+    y_data = data_mean(x_data) + np.random.normal(scale=data_std(x_data))
     if sparse:
         x_isolated = np.array([0.5, 9.5])
         x_data = np.concatenate([x_data, x_isolated], axis=0)
@@ -199,6 +200,38 @@ def generate_toy_data(num_samples=500, sparse=False):
     return_tuple = (np.expand_dims(np.float32(x), axis=-1) for x in return_tuple)
 
     return return_tuple
+
+
+def create_or_load_fold(dataset, num_folds, save_path=None):
+    global data
+    assert isinstance(num_folds, int) and num_folds > 0
+
+    # if save path was provided and a data pickle exists therein, load it
+    if save_path is not None and os.path.exists(os.path.join(save_path, 'data.pkl')):
+        with open(os.path.join(save_path, 'data.pkl'), 'rb') as f:
+            data = pickle.load(f)
+
+    # otherwise, we need to make new split assignments
+    else:
+
+        # toy data
+        if dataset == 'toy':
+            pass
+            # for n in range(1, num_folds + 1):
+            #     x,
+        else:
+            # load and split data
+            with open(os.path.join('data', dataset, dataset + '.pkl'), 'rb') as f:
+                data = pickle.load(f)
+            data.update({'split': 1 + np.random.choice(num_folds, data['response'].shape[0])})
+
+    # if save path was provided, save the data with split assignments
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+        with open(os.path.join(save_path, 'data.pkl'), 'wb') as f:
+            pickle.dump(data, f)
+
+    return data
 
 
 if __name__ == '__main__':

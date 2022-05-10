@@ -5,14 +5,10 @@ import tensorflow as tf
 class RegressionCallback(tf.keras.callbacks.Callback):
 
     def __init__(self, validation_freq=0, early_stop_patience=0):
-        """
-        Custom performance monitoring callback with early stopping
-        :param validation_freq: at which epoch frequency to print and do model checking (must align with keras fit)
-        :param early_stop_patience: early stopping patience (a zero or negative value disables early stopping)
-        """
         super().__init__()
 
         # configure and initialize
+        self.monitor = 'val_LL'
         self.validation_freq = validation_freq
         self.patience = early_stop_patience
         self.nan_inf = False
@@ -22,6 +18,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
         self.best = None
 
     def on_train_begin(self, logs=None):
+
         # reinitialization code that allows instance to be reused
         self.nan_inf = False
         self.wait = 0
@@ -40,8 +37,8 @@ class RegressionCallback(tf.keras.callbacks.Callback):
 
             # early stopping logic
             if self.patience > 0:
-                if tf.greater(logs['val_LL'], self.best):
-                    self.best = logs['val_LL']
+                if tf.greater(logs[self.monitor], self.best):
+                    self.best = logs[self.monitor]
                     self.wait = 0
                     self.best_weights = self.model.get_weights()
                 else:
@@ -49,7 +46,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
                     if self.wait >= self.patience:
                         self.stopped_epoch = epoch
                         self.model.stop_training = True
-                update_string += ' | Best Validation LL = {:.4f}'.format(self.best)
+                update_string += ' | Best {:s} = {:.4f}'.format(self.monitor, self.best)
                 update_string += ' | Patience: {:d}/{:d}'.format(self.wait, self.patience)
 
             # test for NaN and Inf

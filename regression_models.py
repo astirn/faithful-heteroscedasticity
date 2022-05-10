@@ -68,7 +68,7 @@ class HeteroscedasticRegression(tf.keras.Model):
 
         # take necessary gradients
         with tf.GradientTape() as tape:
-            mean, precision = self.call(data, training=True)
+            mean, precision = self.call(data['x'], training=True)
             py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
             ll = py_x.log_prob(self.whiten_targets(data['y']))
             loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
@@ -81,7 +81,7 @@ class HeteroscedasticRegression(tf.keras.Model):
         # take necessary gradients
         dim_batch = tf.cast(tf.shape(data['x'])[0], tf.float32)
         with tf.GradientTape(persistent=self.run_eagerly) as tape:
-            mean, precision = self.call(data, training=True)
+            mean, precision = self.call(data['x'], training=True)
             py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=precision ** -0.5)
             y = self.whiten_targets(data['y'])
             error = (y - mean)
@@ -106,10 +106,10 @@ class HeteroscedasticRegression(tf.keras.Model):
         trainable_variables = f_mean.trainable_variables + f_precision.trainable_variables
         with tf.GradientTape(persistent=True) as tape2:
             with tf.GradientTape(persistent=True) as tape1:
-                mean, precision = f_mean.call(data, training=True), f_precision.call(data, training=True)
+                mean, precision = f_mean.call(data['x'], training=True), f_precision.call(data['x'], training=True)
                 mean_precision = tf.stack([mean, precision], axis=-1)
                 py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-                loss = tf.reduce_sum(tf.reduce_mean(-py_x.log_prob(self.whiten_targets(data['y'])), axis=-1))
+                loss = tf.reduce_mean(-py_x.log_prob(self.whiten_targets(data['y'])), axis=-1)
             dl_dm = tape1.gradient(loss, mean)
             dl_dp = tape1.gradient(loss, precision)
             dmp_dnet = tape1.jacobian(mean_precision, trainable_variables)
@@ -132,8 +132,8 @@ class HeteroscedasticRegression(tf.keras.Model):
     def update_metrics(self, data):
         mean, variance = self.predictive_central_moments(data['x'])
         log_prob = self.predictive_distribution(data['x']).log_prob(data['y'])[..., None]
-        mean_variance_ll = tf.concat([mean, variance, log_prob], axis=1)
-        self.compiled_metrics.update_state(data['y'], mean)
+        predictions = tf.concat([mean, variance, log_prob], axis=1)
+        self.compiled_metrics.update_state(y_true=data['y'], y_pred=predictions)
 
     def train_step(self, data):
         if self.optimization == 'first-order':
@@ -174,8 +174,8 @@ class Normal(HeteroscedasticRegression, ABC):
         self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
         self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
 
-    def call(self, inputs, **kwargs):
-        return self.f_mean(inputs['x'], **kwargs), self.f_precision(inputs['x'], **kwargs)
+    def call(self, x, **kwargs):
+        return self.f_mean(x, **kwargs), self.f_precision(x, **kwargs)
 
     def predictive_central_moments(self, x):
         mean = self.de_whiten_mean(self.f_mean(x, training=False))
@@ -305,7 +305,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # load data
-    x_train, y_train, _, _, _ = generate_toy_data(sparse=bool(args.sparse))
+    x_train, y_train, _, _, _ = generate_toy_data(num_samples=500, sparse=bool(args.sparse))
     ds_train = tf.data.Dataset.from_tensor_slices({'x': x_train, 'y': y_train}).batch(x_train.shape[0])
     x_valid, y_valid, x_eval, true_mean, true_std = generate_toy_data(sparse=bool(args.sparse))
     ds_valid = tf.data.Dataset.from_tensor_slices({'x': x_valid, 'y': y_valid}).batch(x_valid.shape[0])
@@ -335,15 +335,15 @@ if __name__ == '__main__':
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
     mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
-        # MeanLogLikelihood(),
-        tf.metrics.RootMeanSquaredError(),
-        RootMeanSquaredError()
+        MeanLogLikelihood(),
+        RootMeanSquaredError(),
+        ExpectationCalibrationError()
     ])
 
     # train model
-    hist = mdl.fit(x=ds_train, validation_data=ds_valid, epochs=int(20e3), verbose=0, callbacks=[
-        RegressionCallback(validation_freq=500, early_stop_patience=6),
-    ])
+    validation_freq = 500
+    hist = mdl.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(20e3), verbose=0,
+                   callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=6)])
 
     # evaluate predictive model
     mdl.num_mc_samples = 2000
