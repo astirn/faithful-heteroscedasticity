@@ -31,7 +31,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
         if epoch % self.validation_freq == 0:
 
             # update string
-            update_string = self.model.name + ' ' + self.model.optimization + ' | Epoch {:d}'.format(epoch)
+            update_string = self.model.name + ' | Epoch {:d}'.format(epoch)
             for key, val in logs.items():
                 update_string += ' | {:s} = {:.4f}'.format(key, val)
 

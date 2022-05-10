@@ -61,7 +61,7 @@ class TargetScalings(object):
 class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
 
     def __init__(self, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
-        tf.keras.Model.__init__(self, name=kwargs.get('name'))
+        tf.keras.Model.__init__(self, name=kwargs['name'] + ' ' + optimization)
         TargetScalings.__init__(self, y_mean, y_var)
 
         # save optimization method
@@ -133,9 +133,9 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
         return gradients, trainable_variables
 
     def update_metrics(self, data):
-        mean, variance = self.predictive_central_moments(data['x'])
-        log_prob = self.predictive_distribution(data['x']).log_prob(data['y'])[..., None]
-        predictions = tf.concat([mean, variance, log_prob], axis=1)
+        py_x = self.predictive_distribution(data['x'])
+        log_prob = py_x.log_prob(data['y'])[..., None]
+        predictions = tf.concat([py_x.mean(), py_x.variance(), log_prob], axis=1)
         self.compiled_metrics.update_state(y_true=data['y'], y_pred=predictions)
 
     def train_step(self, data):
@@ -183,9 +183,7 @@ class Normal(HeteroscedasticRegression, ABC):
     def predictive_distribution(self, x):
         mean = self.de_whiten_mean(self.f_mean(x, training=False))
         stddev = self.de_whiten_precision(self.f_precision(x, training=False)) ** -0.5
-        px_y = tfp.distributions.MultivariateNormalDiag(loc=mean, scale_diag=stddev)
-
-        return px_y
+        return tfp.distributions.MultivariateNormalDiag(loc=mean, scale_diag=stddev)
 
 
 class MonteCarloDropout(HeteroscedasticRegression, ABC):
@@ -250,7 +248,8 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
         tf.keras.Model.__init__(self, name='Variational')
         TargetScalings.__init__(self, y_mean, y_var)
 
-        self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([1.0], [1.0]), 1)
+        # precision prior
+        self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0], [1.0]), 1)
 
         # build parameter networks
         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
@@ -277,15 +276,23 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
     def call(self, x, **kwargs):
         return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
 
+    def predictive_distribution(self, x):
+        mu, alpha, beta = self.call(x, training=False)
+        loc = self.de_whiten_mean(mu)
+        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+        return tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
+
     def update_metrics(self, y, mu, alpha, beta):
         loc = self.de_whiten_mean(mu)
-        p_y_x = tfp.distributions.StudentT(df=2 * alpha, loc=loc,
-                                           scale=self.de_whiten_stddev(tf.sqrt(beta / alpha)))
-        predictions = tf.concat([p_y_x.mean(), p_y_x.variance(), p_y_x.log_prob(y)], axis=1)
+        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+        py_x = tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
+        predictions = tf.concat([py_x.mean(), py_x.variance(), py_x.log_prob(y)], axis=1)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictions)
 
     def train_step(self, data):
         with tf.GradientTape() as tape:
+
+            # amortized parameter networks
             mu, alpha, beta = self.call(data['x'], training=True)
 
             # variational family
@@ -414,9 +421,9 @@ if __name__ == '__main__':
 
     # evaluate predictive model
     mdl.num_mc_samples = 2000
-    mdl_mean, mdl_var = mdl.predictive_central_moments(x_eval)
-    mdl_mean, mdl_std = mdl_mean.numpy(), mdl_var.numpy() ** 0.5
+    p_y_x = mdl.predictive_distribution(x_eval)
+    mdl_mean, mdl_std = p_y_x.mean().numpy(), p_y_x.stddev().numpy()
 
     # plot results for toy data
-    fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, args.model + ' ' + mdl.optimization)
+    fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, args.model)
     plt.show()
