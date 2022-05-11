@@ -201,7 +201,7 @@ class Student(HeteroscedasticRegression):
             mu, alpha, beta = self.call(x, training=True)
 
             # minimize negative log likelihood
-            py_x = self.predictive_distribution(mu, alpha, beta)
+            py_x = tfp.distributions.StudentT(df=2 * alpha, loc=mu, scale=tf.sqrt(beta / alpha))
             ll = tf.reduce_sum(py_x.log_prob(self.whiten_targets(y)), axis=-1)
             loss = tf.reduce_mean(-ll)
 
