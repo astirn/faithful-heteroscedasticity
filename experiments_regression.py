@@ -10,7 +10,7 @@ from callbacks import RegressionCallback
 from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
 from sklearn import preprocessing
 from regression_data import create_or_load_fold
-from regression_models import Normal, VariationalGammaNormal
+from regression_models import Normal, Student, VariationalGammaNormal
 
 # script arguments
 parser = argparse.ArgumentParser()
@@ -31,6 +31,7 @@ nn_kwargs = {'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}
 models_and_configs = [
     {'model': Normal, 'config': {'optimization': 'first-order'}},
     {'model': Normal, 'config': {'optimization': 'second-order-mean'}},
+    {'model': Student, 'config': {'optimization': 'second-order-mean'}},
     {'model': VariationalGammaNormal, 'config': {'empirical_bayes': False}},
     {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.6}},
     {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.8}},

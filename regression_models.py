@@ -168,6 +168,49 @@ class Normal(HeteroscedasticRegression, ABC):
         return mean, precision
 
 
+class Student(HeteroscedasticRegression):
+
+    def __init__(self, dim_x, dim_y, **kwargs):
+        HeteroscedasticRegression.__init__(self, name='Student', **kwargs)
+
+        # parameter networks
+        self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+        self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
+        self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
+
+    def call(self, x, **kwargs):
+        return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
+
+    def predictive_distribution(self, *args):
+        mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
+        loc = self.de_whiten_mean(mu)
+        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+        return tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
+
+    def update_metrics(self, y, mu, alpha, beta):
+        py_x = self.predictive_distribution(mu, alpha, beta)
+        prob_errors = tfp.distributions.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / py_x.stddev())
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
+
+    def optimization_step(self, x, y):
+
+        with tf.GradientTape() as tape:
+
+            # amortized parameter networks
+            mu, alpha, beta = self.call(x, training=True)
+
+            # minimize negative log likelihood
+            py_x = self.predictive_distribution(mu, alpha, beta)
+            ll = tf.reduce_sum(py_x.log_prob(self.whiten_targets(y)), axis=-1)
+            loss = tf.reduce_mean(-ll)
+
+        # update model parameters
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+
+        return mu, alpha, beta
+
+
 class VariationalGammaNormal(HeteroscedasticRegression):
 
     def __init__(self, dim_x, dim_y, empirical_bayes, sq_err_scale=None, **kwargs):
@@ -303,6 +346,8 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'Normal':
         MODEL = Normal
+    elif args.model == 'Student':
+        MODEL = Student
     elif args.model == 'VariationalGammaNormal':
         MODEL = VariationalGammaNormal
     else:
@@ -314,11 +359,10 @@ if __name__ == '__main__':
         dim_y=y_train.shape[1],
         y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
         y_var=tf.constant([y_train.var()], dtype=tf.float32),
-        optimization=args.optimization,  # for Normal, MC-Dropout, and Deep Ensemble models
+        optimization=args.optimization,  # for Normal
         num_mc_samples=20,  # for MC-Dropout
         empirical_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
         sq_err_scale=args.sq_err_scale,  # for Variational Gamma-Normal
-        num_ensembles=10,  # for Deep Ensembles
     )
 
     # build the model
