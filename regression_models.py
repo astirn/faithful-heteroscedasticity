@@ -151,7 +151,7 @@ class Normal(HeteroscedasticRegression, ABC):
             dl_dp_expected = 0.5 * (error ** 2 - precision ** -1) / dim_batch
             tf.assert_less(tf.abs(dl_dp_automatic - dl_dp_expected), 1e-5)
 
-        return gradients
+        return gradients, mean, precision
 
     def optimization_step(self, x, y):
 
