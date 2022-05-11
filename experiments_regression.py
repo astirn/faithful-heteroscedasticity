@@ -1,7 +1,9 @@
 import argparse
 import os
+import pickle
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 
 from callbacks import RegressionCallback
@@ -26,15 +28,17 @@ os.makedirs(exp_path, exist_ok=True)
 models_and_configs = [
     {'model': Normal, 'config': {'optimization': 'first-order'}},
     {'model': Normal, 'config': {'optimization': 'second-order-mean'}},
-    {'model': VariationalRegression, 'config': dict()},
-    # {'model': Normal, 'config': {'optimization': 'second-order-diag'}},
-    # {'model': Normal, 'config': {'optimization': 'second-order-full'}},
+    {'model': VariationalRegression, 'config': {'emp_bayes': False}},
+    {'model': VariationalRegression, 'config': {'emp_bayes': True, 'sq_err_scale': 0.6}},
+    {'model': VariationalRegression, 'config': {'emp_bayes': True, 'sq_err_scale': 0.8}},
+    {'model': VariationalRegression, 'config': {'emp_bayes': True, 'sq_err_scale': 1.0}},
 ]
 
 # create or load folds
 data = create_or_load_fold(args.dataset, args.num_folds, exp_path)
 
 # loop over folds
+results = pd.DataFrame()
 for fold in np.unique(data['split']):
     fold_path = os.path.join(exp_path, 'fold_' + str(fold))
 
@@ -53,10 +57,10 @@ for fold in np.unique(data['split']):
 
         # loop over the models and configurations
         for model_and_config in models_and_configs:
-            print('********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
+            print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
             # each trial within a fold gets the same random seed
-            tf.keras.utils.set_random_seed(trial)
+            tf.keras.utils.set_random_seed(trial * 112358)
 
             # configure and build model
             model = model_and_config['model'](
@@ -73,45 +77,34 @@ for fold in np.unique(data['split']):
                 ExpectationCalibrationError()
             ])
 
-            # train model
-            valid_freq = 100
-            hist = model.fit(x=x_train, y=y_train,
-                             validation_data=(x_valid, y_valid), validation_freq=valid_freq,
-                             batch_size=x_train.shape[0], epochs=int(20e3), verbose=0,
-                             callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
+            # determine directory where to save model
+            model_dir = os.path.join(trial_path, model.name)
+
+            # if we are set to resume and the model directory already contains a saved model, load it
+            if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
+                print('Model exists. Loading...')
+                model.load_weights(os.path.join(model_dir, 'best_checkpoint'))
+
+            # otherwise, train and save the model
+            else:
+                valid_freq = 100
+                hist = model.fit(x=x_train, y=y_train,
+                                 validation_data=(x_valid, y_valid), validation_freq=valid_freq,
+                                 batch_size=x_train.shape[0], epochs=int(20e3), verbose=0,
+                                 callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
+                model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
+                with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:
+                    pickle.dump(hist.history, f)
 
             # test model
-            test_metrics = model.evaluate((x_valid, y_valid), verbose=0)
+            test_metrics = model.evaluate(x=x_valid, y=y_valid, verbose=0)
             print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
 
+            # update results table
+            new_results = pd.DataFrame(
+                data={'Model': model.name, 'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
+                index=pd.MultiIndex.from_arrays([[fold], [trial]], names=['fold', 'trial']))
+            results = pd.concat([results, new_results])
 
-        # # determine directory where to save model
-        # model_dir = utils.model_save_dir(fold_path, normalization, context, loss, model)
-        #
-        # # allows some retries since model can infrequently and randomly fail to converge
-        # for n in range(args.max_attempts):
-        #     if n > 0:
-        #         print('Reattempt {:d} after r = {:.2f}'.format(n, r))
-        #
-        #     # if we are set to resume and the model directory already contains a saved model, load it
-        #     if n == 0 and not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'saved_model.pb')):
-        #         print('Model exists. Loading...')
-        #         model = load_model(model_dir, model_dir.split('/')[-1].split('-')[0])
-        #
-        #     # otherwise, train and save the model
-        #     else:
-        #         model = train(model, train_data, valid_data, verbose=0)
-        #         model.save(model_dir, save_traces=True)
-        #         print('Model saved!')
-        #
-        #     # break retry loop if the Pearson correlation coefficient is satisfactory
-        #     df_tap = normalizer.denormalize(utils.accumulate_targets_and_predictions(model, valid_data))
-        #     predictions = {'predicted_lfc': df_tap.get('predicted_lfc'),
-        #                    'predicted_label_likelihood': df_tap.get('predicted_label_likelihood')}
-        #     r = utils.regression_metrics(df_tap['target_lfc'], **predictions)[0]
-        #     if r >= args.retry_threshold:
-        #         break
-        #
-        #     # otherwise, recompile the model and try again
-        #     else:
-        #         model = build_and_compile(model_name, loss, context, train_data, **args.kwargs)
+# save the results
+results.to_pickle(os.path.join(exp_path, 'results.pkl'))
