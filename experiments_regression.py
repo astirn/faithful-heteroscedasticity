@@ -10,7 +10,7 @@ from callbacks import RegressionCallback
 from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
 from sklearn import preprocessing
 from regression_data import create_or_load_fold
-from regression_models import Normal, VariationalRegression
+from regression_models import Normal, VariationalGammaNormal
 
 # script arguments
 parser = argparse.ArgumentParser()
@@ -30,10 +30,10 @@ nn_kwargs = {'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}
 models_and_configs = [
     {'model': Normal, 'config': {'optimization': 'first-order'}},
     {'model': Normal, 'config': {'optimization': 'second-order-mean'}},
-    {'model': VariationalRegression, 'config': {'emp_bayes': False}},
-    {'model': VariationalRegression, 'config': {'emp_bayes': True, 'sq_err_scale': 0.6}},
-    {'model': VariationalRegression, 'config': {'emp_bayes': True, 'sq_err_scale': 0.8}},
-    {'model': VariationalRegression, 'config': {'emp_bayes': True, 'sq_err_scale': 1.0}},
+    {'model': VariationalGammaNormal, 'config': {'emp_bayes': False}},
+    {'model': VariationalGammaNormal, 'config': {'emp_bayes': True, 'sq_err_scale': 0.6}},
+    {'model': VariationalGammaNormal, 'config': {'emp_bayes': True, 'sq_err_scale': 0.8}},
+    {'model': VariationalGammaNormal, 'config': {'emp_bayes': True, 'sq_err_scale': 1.0}},
 ]
 
 # create or load folds
