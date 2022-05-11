@@ -294,16 +294,17 @@ class VariationalGammaNormal(tf.keras.Model, TargetScaling):
     def call(self, x, **kwargs):
         return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
 
-    def predictive_distribution(self, x):
-        mu, alpha, beta = self.call(x, training=False)
+    def predictive_distribution(self, *args):
+        if len(args) == 1:
+            mu, alpha, beta = self.call(args[0], training=False)
+        else:
+            mu, alpha, beta = args
         loc = self.de_whiten_mean(mu)
         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
         return tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
 
     def update_metrics(self, y, mu, alpha, beta):
-        loc = self.de_whiten_mean(mu)
-        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        py_x = tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
+        py_x = self.predictive_distribution(mu, alpha, beta)
         prob_errors = tfp.distributions.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / py_x.stddev())
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
@@ -404,8 +405,10 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', default=False, help='sparse toy data option')
-    parser.add_argument('--model', type=str, default='Normal', help='{Normal, MC-dropout, Ensemble}')
-    parser.add_argument('--optimization', type=str, default='first-order', help='how to compute gradients')
+    parser.add_argument('--model', type=str, default='Normal', help='which model to use')
+    parser.add_argument('--optimization', type=str, default='first-order', help='for Normal, MC-Dropout, DeepEnsemble')
+    parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Variational Gamma-Normal')
+    parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Variational Gamma-Normal')
     parser.add_argument('--sparse', action='store_true', default=False, help='sparse toy data option')
     args = parser.parse_args()
 
@@ -423,8 +426,8 @@ if __name__ == '__main__':
         MODEL = MonteCarloDropout
     elif args.model == 'DeepEnsemble':
         MODEL = DeepEnsemble
-    elif args.model == 'VariationalRegression':
-        MODEL = VariationalRegression
+    elif args.model == 'VariationalGammaNormal':
+        MODEL = VariationalGammaNormal
     else:
         raise NotImplementedError
 
@@ -432,11 +435,13 @@ if __name__ == '__main__':
     mdl = MODEL(
         dim_x=x_train.shape[1],
         dim_y=y_train.shape[1],
-        optimization=args.optimization,
         y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
         y_var=tf.constant([y_train.var()], dtype=tf.float32),
-        num_mc_samples=20,
-        num_ensembles=10,
+        optimization=args.optimization,  # for Normal, MC-Dropout, and Deep Ensemble models
+        num_mc_samples=20,  # for MC-Dropout
+        emp_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
+        sq_err_scale=args.sq_err_scale,  # for Variational Gamma-Normal
+        num_ensembles=10,  # for Deep Ensembles
     )
 
     # build the model
