@@ -25,6 +25,7 @@ exp_path = os.path.join('experiments', 'regression', args.dataset)
 os.makedirs(exp_path, exist_ok=True)
 
 # models and configurations to run
+nn_kwargs = {'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}
 models_and_configs = [
     {'model': Normal, 'config': {'optimization': 'first-order'}},
     {'model': Normal, 'config': {'optimization': 'second-order-mean'}},
@@ -44,7 +45,7 @@ for fold in np.unique(data['split']):
 
     # loop over trials
     for trial in range(1, args.num_trials + 1):
-        trial_path = os.path.join(fold_path, 'trial_' + str(fold))
+        trial_path = os.path.join(fold_path, 'trial_' + str(trial))
 
         # data pipeline
         i_train = data['split'] != fold
@@ -68,7 +69,7 @@ for fold in np.unique(data['split']):
                 dim_y=y_train.shape[1],
                 y_mean=tf.reduce_mean(y_train, axis=0),
                 y_var=tf.math.reduce_variance(y_train, axis=0),
-                **model_and_config['config']
+                **model_and_config['config'], **nn_kwargs
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
             model.compile(optimizer=optimizer, metrics=[
@@ -82,7 +83,7 @@ for fold in np.unique(data['split']):
 
             # if we are set to resume and the model directory already contains a saved model, load it
             if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
-                print('Model exists. Loading...')
+                print(model.name + ' exists. Loading...')
                 model.load_weights(os.path.join(model_dir, 'best_checkpoint'))
 
             # otherwise, train and save the model
@@ -102,7 +103,8 @@ for fold in np.unique(data['split']):
 
             # update results table
             new_results = pd.DataFrame(
-                data={'Model': model.name, 'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
+                data={'Model': model.name, 'Architecture': str(nn_kwargs),
+                      'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
                 index=pd.MultiIndex.from_arrays([[fold], [trial]], names=['fold', 'trial']))
             results = pd.concat([results, new_results])
 

@@ -128,15 +128,16 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
             dmp_dnet = tape1.jacobian(mean_precision, trainable_variables)
         d2nll_dm2 = tape2.gradient(dl_dm, mean) * dim_batch
         d2nll_dp2 = tape2.gradient(dl_dp, precision) * dim_batch
-        tf.assert_greater(d2nll_dp2, 0.0)
+        # tf.assert_greater(d2nll_dp2, 0.0)
         d2nll_dp2 = tf.clip_by_value(d2nll_dp2, 1e-3, np.inf)
 
         # apply second order information
         if diag:
             dl_dmv = tf.stack([dl_dm / d2nll_dm2, dl_dp / d2nll_dp2], axis=-1)
         else:
-            d2nll_dmdp = tape2.gradient(dl_dm, precision)
-            H = tf.reshape(tf.concat([d2nll_dm2, d2nll_dmdp, d2nll_dmdp, d2nll_dp2], axis=-1), [-1, 2, 2])
+            d2nll_dmdp = tape2.gradient(dl_dm, precision) * dim_batch
+            dim_H = tf.stack([-1, 2 * tf.shape(y)[-1], 2 * tf.shape(y)[-1]])
+            H = tf.reshape(tf.concat([10 * d2nll_dm2, d2nll_dmdp, d2nll_dmdp, 10 * d2nll_dp2], axis=-1), dim_H)
             dl_dmv = tf.transpose(tf.linalg.solve(H, tf.stack([dl_dm, dl_dp], axis=-2)), [0, 2, 1])
         gradients = [tf.tensordot(dl_dmv, d, axes=[[0, 1, 2], [0, 1, 2]]) for d in dmp_dnet]
 
