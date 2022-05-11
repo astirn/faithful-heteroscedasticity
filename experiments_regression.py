@@ -7,10 +7,10 @@ import pandas as pd
 import tensorflow as tf
 
 from callbacks import RegressionCallback
+from data_regression import create_or_load_fold
 from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
+from models_regression import Normal, Student, VariationalGammaNormal
 from sklearn import preprocessing
-from regression_data import create_or_load_fold
-from regression_models import Normal, Student, VariationalGammaNormal
 
 # script arguments
 parser = argparse.ArgumentParser()

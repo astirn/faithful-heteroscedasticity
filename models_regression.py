@@ -11,7 +11,7 @@ from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
 from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
-from regression_data import generate_toy_data
+from data_regression import generate_toy_data
 
 
 # configure GPUs
