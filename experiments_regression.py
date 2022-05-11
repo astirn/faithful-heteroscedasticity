@@ -18,6 +18,7 @@ parser.add_argument('--dataset', type=str, default='boston', help='which dataset
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=10, help='number of trials per fold')
 parser.add_argument('--split_seed', type=int, default=853211, help='number of trials per fold')
+parser.add_argument('--trial_seed', type=int, default=112358, help='number of trials per fold')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
 args = parser.parse_args()
 
@@ -63,7 +64,7 @@ for fold in np.unique(data['split']):
             print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
             # each trial within a fold gets the same random seed
-            tf.keras.utils.set_random_seed(trial * 112358)
+            tf.keras.utils.set_random_seed(trial * args.trial_seed)
 
             # configure and build model
             model = model_and_config['model'](
