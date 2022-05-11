@@ -71,7 +71,7 @@ class TargetScalings(object):
 class HeteroscedasticRegression(tf.keras.Model, TargetScalings):
 
     def __init__(self, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
-        tf.keras.Model.__init__(self, name=kwargs['name'] + ' ' + optimization)
+        tf.keras.Model.__init__(self, name=kwargs['name'] + '-' + optimization)
         TargetScalings.__init__(self, y_mean, y_var)
 
         # save optimization method
@@ -257,11 +257,15 @@ class DeepEnsemble(HeteroscedasticRegression, ABC):
 
 class VariationalRegression(tf.keras.Model, TargetScalings):
 
-    def __init__(self, dim_x, dim_y, y_mean=0.0, y_var=1.0, **kwargs):
-        tf.keras.Model.__init__(self, name='Variational')
+    def __init__(self, dim_x, dim_y, emp_bayes, sq_err_scale=None, y_mean=0.0, y_var=1.0, **kwargs):
+        assert not emp_bayes or sq_err_scale is not None
+        name = 'VariationalGammaNormal' + ('-EB-{:.2f}'.format(sq_err_scale) if emp_bayes else '')
+        tf.keras.Model.__init__(self, name=name)
         TargetScalings.__init__(self, y_mean, y_var)
 
         # precision prior
+        self.emp_bayes = emp_bayes
+        self.sq_err_scale = sq_err_scale
         self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0], [1.0]), 1)
 
         # build parameter networks
@@ -304,6 +308,15 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def train_step(self, data):
+        x, y = parse_keras_inputs(data)
+
+        # empirical bayes prior
+        if self.emp_bayes:
+            sq_errors = (self.whiten_targets(y) - self.mu(x)) ** 2
+            a = tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2
+            b = (a - 1) * tf.reduce_mean(sq_errors, axis=0) / self.sq_err_scale
+            p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma(a, b), 1)
+
         with tf.GradientTape() as tape:
 
             # amortized parameter networks
@@ -313,8 +326,8 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
             qp = tfp.distributions.Independent(tfp.distributions.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
 
             # use negative evidence lower bound as minimization objective
-            ell = self.expected_ll(data['y'], mu, alpha, beta, whiten_targets=True)
-            dkl = qp.kl_divergence(self.p_lambda)
+            ell = self.expected_ll(y, mu, alpha, beta, whiten_targets=True)
+            dkl = qp.kl_divergence(p_lambda) if self.emp_bayes else qp.kl_divergence(self.p_lambda)
             loss = -tf.reduce_mean(ell - dkl)
 
         # update model parameters
