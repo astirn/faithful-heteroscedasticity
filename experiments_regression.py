@@ -16,7 +16,7 @@ from regression_models import Normal, Student, VariationalGammaNormal
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='boston', help='which dataset to use')
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
-parser.add_argument('--num_trials', type=int, default=10, help='number of trials per fold')
+parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
 parser.add_argument('--split_seed', type=int, default=853211, help='number of trials per fold')
 parser.add_argument('--trial_seed', type=int, default=112358, help='number of trials per fold')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
