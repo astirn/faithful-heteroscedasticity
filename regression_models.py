@@ -33,18 +33,12 @@ def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_
     return nn
 
 
-def parse_keras_inputs(data):
-    if isinstance(data, dict):
-        x, y = data['x'], data['y']
-    elif isinstance(data, tuple):
-        x, y = data
-    else:
-        raise NotImplementedError
-    return x, y
+class HeteroscedasticRegression(tf.keras.Model):
 
-
-class TargetScaling(object):
     def __init__(self, y_mean, y_var, **kwargs):
+        tf.keras.Model.__init__(self, name=kwargs['name'])
+
+        # save target scaling
         self.y_mean = tf.constant(y_mean, dtype=tf.float32)
         self.y_var = tf.constant(y_var, dtype=tf.float32)
         self.y_std = tf.sqrt(self.y_var)
@@ -67,15 +61,62 @@ class TargetScaling(object):
     def de_whiten_log_precision(self, log_precision):
         return log_precision - tf.math.log(self.y_var)
 
+    @staticmethod
+    def parse_keras_inputs(data):
+        if isinstance(data, dict):
+            x, y = data['x'], data['y']
+        elif isinstance(data, tuple):
+            x, y = data
+        else:
+            raise NotImplementedError
+        return x, y
 
-class HeteroscedasticRegression(tf.keras.Model, TargetScaling):
+    def train_step(self, data):
+        x, y = self.parse_keras_inputs(data)
 
-    def __init__(self, optimization='first-order', y_mean=0.0, y_var=1.0, **kwargs):
-        tf.keras.Model.__init__(self, name=kwargs['name'] + '-' + optimization)
-        TargetScaling.__init__(self, y_mean, y_var)
+        # optimization step
+        params = self.optimization_step(x, y)
+
+        # update metrics
+        self.update_metrics(y, *params)
+
+        return {m.name: m.result() for m in self.metrics}
+
+    def test_step(self, data):
+        x, y = self.parse_keras_inputs(data)
+
+        # update metrics
+        self.update_metrics(y, *self.call(x, training=True))
+
+        return {m.name: m.result() for m in self.metrics}
+
+
+class Normal(HeteroscedasticRegression, ABC):
+
+    def __init__(self, dim_x, dim_y, optimization, **kwargs):
+        HeteroscedasticRegression.__init__(self, name='Normal' + '-' + optimization, **kwargs)
 
         # save optimization method
         self.optimization = optimization
+
+        # parameter networks
+        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+        self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
+
+    def call(self, x, **kwargs):
+        return self.f_mean(x, **kwargs), self.f_precision(x, **kwargs)
+
+    def predictive_distribution(self, *args):
+        mean, precision = self.call(args[0], training=False) if len(args) == 1 else args
+        mean = self.de_whiten_mean(mean)
+        stddev = self.de_whiten_precision(precision) ** -0.5
+        return tfp.distributions.Normal(loc=mean, scale=stddev)
+
+    def update_metrics(self, y, mean, precision):
+        py_x = self.predictive_distribution(mean, precision)
+        prob_errors = tfp.distributions.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def first_order_gradients(self, x, y):
 
@@ -87,7 +128,7 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScaling):
             loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
         gradients = tape.gradient(loss, self.trainable_variables)
 
-        return gradients
+        return gradients, mean, precision
 
     def second_order_gradients_mean(self, x, y):
 
@@ -112,160 +153,30 @@ class HeteroscedasticRegression(tf.keras.Model, TargetScaling):
 
         return gradients
 
-    def second_order_gradients_diag(self, x, y, f_mean, f_precision, diag):
-        
-        # take necessary gradients
-        dim_batch = tf.cast(tf.shape(x)[0], tf.float32)
-        trainable_variables = f_mean.trainable_variables + f_precision.trainable_variables
-        with tf.GradientTape(persistent=True) as tape2:
-            with tf.GradientTape(persistent=True) as tape1:
-                mean, precision = f_mean.call(x, training=True), f_precision.call(x, training=True)
-                mean_precision = tf.stack([mean, precision], axis=-1)
-                py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-                loss = tf.reduce_mean(-py_x.log_prob(self.whiten_targets(y)), axis=-1)
-            dl_dm = tape1.gradient(loss, mean)
-            dl_dp = tape1.gradient(loss, precision)
-            dmp_dnet = tape1.jacobian(mean_precision, trainable_variables)
-        d2nll_dm2 = tape2.gradient(dl_dm, mean) * dim_batch
-        d2nll_dp2 = tape2.gradient(dl_dp, precision) * dim_batch
-        # tf.assert_greater(d2nll_dp2, 0.0)
-        d2nll_dp2 = tf.clip_by_value(d2nll_dp2, 1e-3, np.inf)
-
-        # apply second order information
-        if diag:
-            dl_dmv = tf.stack([dl_dm / d2nll_dm2, dl_dp / d2nll_dp2], axis=-1)
-        else:
-            d2nll_dmdp = tape2.gradient(dl_dm, precision) * dim_batch
-            dim_H = tf.stack([-1, 2 * tf.shape(y)[-1], 2 * tf.shape(y)[-1]])
-            H = tf.reshape(tf.concat([10 * d2nll_dm2, d2nll_dmdp, d2nll_dmdp, 10 * d2nll_dp2], axis=-1), dim_H)
-            dl_dmv = tf.transpose(tf.linalg.solve(H, tf.stack([dl_dm, dl_dp], axis=-2)), [0, 2, 1])
-        gradients = [tf.tensordot(dl_dmv, d, axes=[[0, 1, 2], [0, 1, 2]]) for d in dmp_dnet]
-
-        return gradients, trainable_variables
-
-    def update_metrics(self, x, y):
-        py_x = self.predictive_distribution(x)
-        prob_errors = tfp.distributions.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
-        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
-
-    def train_step(self, data):
-        x, y = parse_keras_inputs(data)
+    def optimization_step(self, x, y):
 
         if self.optimization == 'first-order':
-            self.optimizer.apply_gradients(zip(self.first_order_gradients(x, y), self.trainable_variables))
+            gradients, mean, precision = self.first_order_gradients(x, y)
         elif self.optimization == 'second-order-mean':
-            self.optimizer.apply_gradients(zip(self.second_order_gradients_mean(x, y), self.trainable_variables))
-        elif self.optimization in {'second-order-diag', 'second-order-full'}:
-            diag = 'diag' in self.optimization
-            if isinstance(self.f_mean, (list, tuple)) and isinstance(self.f_precision, (list, tuple)):
-                for f_mean, f_precision in zip(self.f_mean, self.f_precision):
-                    gradients, network_params = self.second_order_gradients_diag(x, y, f_mean, f_precision, diag)
-                    self.optimizer.apply_gradients(zip(gradients, network_params))
-            else:
-                gradients, network_params = self.second_order_gradients_diag(x, y, self.f_mean, self.f_precision, diag)
-                self.optimizer.apply_gradients(zip(gradients, network_params))
+            gradients, mean, precision = self.second_order_gradients_mean(x, y)
         else:
             raise NotImplementedError
 
-        # update metrics
-        self.update_metrics(x, y)
+        # update model parameters
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
-        return {m.name: m.result() for m in self.metrics}
-
-    def test_step(self, data):
-        x, y = parse_keras_inputs(data)
-
-        # update metrics
-        self.update_metrics(x, y)
-
-        return {m.name: m.result() for m in self.metrics}
+        return mean, precision
 
 
-class Normal(HeteroscedasticRegression, ABC):
+class VariationalGammaNormal(HeteroscedasticRegression):
 
-    def __init__(self, dim_x, dim_y, **kwargs):
-        HeteroscedasticRegression.__init__(self, name='Normal', **kwargs)
-
-        # define parameter networks
-        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
-        self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
-
-    def call(self, x, **kwargs):
-        return self.f_mean(x, **kwargs), self.f_precision(x, **kwargs)
-
-    def predictive_distribution(self, x):
-        mean = self.de_whiten_mean(self.f_mean(x, training=False))
-        stddev = self.de_whiten_precision(self.f_precision(x, training=False)) ** -0.5
-        return tfp.distributions.Normal(loc=mean, scale=stddev)
-
-
-class MonteCarloDropout(HeteroscedasticRegression, ABC):
-
-    def __init__(self, dim_x, dim_y, num_mc_samples, **kwargs):
-        HeteroscedasticRegression.__init__(self, name='MonteCarloDropout', **kwargs)
-
-        # save configuration
-        self.num_mc_samples = num_mc_samples
-
-        # define parameter networks
-        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, rate=0.1, name='mu', **kwargs)
-        self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', rate=0.1, name='lambda', **kwargs)
-
-    def call(self, inputs, **kwargs):
-        return self.f_mean(inputs['x'], **kwargs), self.f_precision(inputs['x'], **kwargs)
-
-    def predictive_central_moments(self, x):
-        means = tf.stack([self.f_mean(x, training=True) for _ in range(self.num_mc_samples)], axis=0)
-        variances = tf.stack([self.f_precision(x, training=True) ** -1 for _ in range(self.num_mc_samples)], axis=0)
-        predictive_mean = tf.reduce_mean(means, axis=0)
-        predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=0) - tf.reduce_mean(means, axis=0) ** 2
-
-        return self.de_whiten_mean(predictive_mean), self.de_whiten_variance(predictive_variance)
-
-    def predictive_distribution(self, x):
-        raise NotImplementedError
-
-
-class DeepEnsemble(HeteroscedasticRegression, ABC):
-
-    def __init__(self, dim_x, dim_y, num_ensembles, **kwargs):
-        HeteroscedasticRegression.__init__(self, name='DeepEnsemble', **kwargs)
-
-        # define parameter networks
-        self.f_mean, self.f_precision = [], []
-        for i in range(num_ensembles):
-            s = str(i + 1)
-            self.f_mean += [param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu_' + s, **kwargs)]
-            self.f_precision += [param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda_' + s, **kwargs)]
-
-    def call(self, inputs, **kwargs):
-        means = tf.stack([mean(inputs['x'], **kwargs) for mean in self.f_mean], axis=0)
-        precisions = tf.stack([precision(inputs['x'], **kwargs) for precision in self.f_precision], axis=0)
-        return means, precisions
-
-    def predictive_central_moments(self, x):
-        means = tf.stack([mean(x, training=False) for mean in self.f_mean], axis=0)
-        variances = tf.stack([precision(x, training=False) ** -1 for precision in self.f_precision], axis=0)
-        predictive_mean = tf.reduce_mean(means, axis=0)
-        predictive_variance = tf.reduce_mean(means ** 2 + variances, axis=0) - tf.reduce_mean(means, axis=0) ** 2
-
-        return self.de_whiten_mean(predictive_mean), self.de_whiten_variance(predictive_variance)
-
-    def predictive_distribution(self, x):
-        raise NotImplementedError
-
-
-class VariationalGammaNormal(tf.keras.Model, TargetScaling):
-
-    def __init__(self, dim_x, dim_y, emp_bayes, sq_err_scale=None, y_mean=0.0, y_var=1.0, **kwargs):
-        assert not emp_bayes or sq_err_scale is not None
-        name = 'VariationalGammaNormal' + ('-EB-{:.2f}'.format(sq_err_scale) if emp_bayes else '')
-        tf.keras.Model.__init__(self, name=name)
-        TargetScaling.__init__(self, y_mean, y_var)
+    def __init__(self, dim_x, dim_y, empirical_bayes, sq_err_scale=None, **kwargs):
+        assert not empirical_bayes or sq_err_scale is not None
+        name = 'VariationalGammaNormal' + ('-EB-{:.2f}'.format(sq_err_scale) if empirical_bayes else '')
+        HeteroscedasticRegression.__init__(self, name=name, **kwargs)
 
         # precision prior
-        self.emp_bayes = emp_bayes
+        self.empirical_bayes = empirical_bayes
         self.sq_err_scale = sq_err_scale
         self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0] * dim_y, [1.0] * dim_y), 1)
 
@@ -278,10 +189,7 @@ class VariationalGammaNormal(tf.keras.Model, TargetScaling):
         return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
 
     def predictive_distribution(self, *args):
-        if len(args) == 1:
-            mu, alpha, beta = self.call(args[0], training=False)
-        else:
-            mu, alpha, beta = args
+        mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
         loc = self.de_whiten_mean(mu)
         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
         return tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
@@ -292,11 +200,10 @@ class VariationalGammaNormal(tf.keras.Model, TargetScaling):
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
-    def train_step(self, data):
-        x, y = parse_keras_inputs(data)
+    def optimization_step(self, x, y):
 
         # empirical bayes prior
-        if self.emp_bayes:
+        if self.empirical_bayes:
             sq_errors = (self.whiten_targets(y) - self.mu(x)) ** 2
             a = tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2
             b = (a - 1) * tf.reduce_mean(sq_errors, axis=0) / self.sq_err_scale
@@ -324,18 +231,7 @@ class VariationalGammaNormal(tf.keras.Model, TargetScaling):
         # update model parameters
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
 
-        # update metrics
-        self.update_metrics(y, *self.call(x))
-
-        return {m.name: m.result() for m in self.metrics}
-
-    def test_step(self, data):
-        x, y = parse_keras_inputs(data)
-
-        # update metrics
-        self.update_metrics(y, *self.call(x))
-
-        return {m.name: m.result() for m in self.metrics}
+        return mu, alpha, beta
 
 
 def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, title):
@@ -407,10 +303,6 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'Normal':
         MODEL = Normal
-    elif args.model == 'MonteCarloDropout':
-        MODEL = MonteCarloDropout
-    elif args.model == 'DeepEnsemble':
-        MODEL = DeepEnsemble
     elif args.model == 'VariationalGammaNormal':
         MODEL = VariationalGammaNormal
     else:
@@ -424,7 +316,7 @@ if __name__ == '__main__':
         y_var=tf.constant([y_train.var()], dtype=tf.float32),
         optimization=args.optimization,  # for Normal, MC-Dropout, and Deep Ensemble models
         num_mc_samples=20,  # for MC-Dropout
-        emp_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
+        empirical_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
         sq_err_scale=args.sq_err_scale,  # for Variational Gamma-Normal
         num_ensembles=10,  # for Deep Ensembles
     )
