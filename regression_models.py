@@ -267,7 +267,7 @@ class VariationalRegression(tf.keras.Model, TargetScalings):
         # precision prior
         self.emp_bayes = emp_bayes
         self.sq_err_scale = sq_err_scale
-        self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0], [1.0]), 1)
+        self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0] * dim_y, [1.0] * dim_y), 1)
 
         # build parameter networks
         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)

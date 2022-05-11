@@ -17,6 +17,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='boston', help='which dataset to use')
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=10, help='number of trials per fold')
+parser.add_argument('--split_seed', type=int, default=853211, help='number of trials per fold')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
 args = parser.parse_args()
 
@@ -36,6 +37,7 @@ models_and_configs = [
 ]
 
 # create or load folds
+np.random.seed(args.split_seed)
 data = create_or_load_fold(args.dataset, args.num_folds, exp_path)
 
 # loop over folds
