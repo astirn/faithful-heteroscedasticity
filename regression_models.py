@@ -269,27 +269,10 @@ class VariationalGammaNormal(tf.keras.Model, TargetScaling):
         self.sq_err_scale = sq_err_scale
         self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0] * dim_y, [1.0] * dim_y), 1)
 
-        # build parameter networks
+        # parameter networks
         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
         self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
         self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
-
-    def expected_ll(self, y, mu, alpha, beta, whiten_targets):
-
-        # compute expected precision and log precision under the variational posterior
-        expected_precision = alpha / beta
-        expected_log_precision = tf.math.digamma(alpha) - tf.math.log(beta)
-
-        # whiten things accordingly
-        if whiten_targets:
-            y = self.whiten_targets(y)
-        else:
-            mu = self.de_whiten_mean(mu)
-            expected_precision = self.de_whiten_precision(expected_precision)
-            expected_log_precision = self.de_whiten_log_precision(expected_log_precision)
-
-        ll = 0.5 * (expected_log_precision - tf.math.log(2 * np.pi) - (y - mu) ** 2 * expected_precision)
-        return tf.reduce_sum(ll, axis=-1)
 
     def call(self, x, **kwargs):
         return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
@@ -332,9 +315,11 @@ class VariationalGammaNormal(tf.keras.Model, TargetScaling):
             qp = tfp.distributions.Independent(tfp.distributions.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
 
             # use negative evidence lower bound as minimization objective
-            ell = self.expected_ll(y, mu, alpha, beta, whiten_targets=True)
-            dkl = qp.kl_divergence(p_lambda)
-            loss = -tf.reduce_mean(ell - dkl)
+            y = self.whiten_targets(y)
+            expected_lambda = alpha / beta
+            expected_ln_lambda = tf.math.digamma(alpha) - tf.math.log(beta)
+            ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - (y - mu) ** 2 * expected_lambda)
+            loss = -tf.reduce_mean(tf.reduce_sum(ell, axis=-1) - qp.kl_divergence(p_lambda))
 
         # update model parameters
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
