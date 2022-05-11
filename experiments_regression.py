@@ -8,7 +8,7 @@ import tensorflow as tf
 
 from callbacks import RegressionCallback
 from data_regression import create_or_load_fold
-from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
+from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
 from models_regression import Normal, Student, VariationalGammaNormal
 from sklearn import preprocessing
 
@@ -79,7 +79,7 @@ for fold in np.unique(data['split']):
             model.compile(optimizer=optimizer, metrics=[
                 MeanLogLikelihood(),
                 RootMeanSquaredError(),
-                ExpectationCalibrationError()
+                ExpectedCalibrationError()
             ])
 
             # determine directory where to save model

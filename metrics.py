@@ -63,9 +63,9 @@ class RootMeanSquaredError(Mean):
         return tf.sqrt(tf.math.divide_no_nan(self.total, self.count))
 
 
-class ExpectationCalibrationError(Mean):
+class ExpectedCalibrationError(Mean):
     def __init__(self, num_bins=6, dtype=None):
-        super(ExpectationCalibrationError, self).__init__('ECE', dtype=dtype)
+        super(ExpectedCalibrationError, self).__init__('ECE', dtype=dtype)
         self.edges = tf.stack([x / num_bins for x in range(num_bins + 1)])
         self.probs = self.edges[1:] - self.edges[:-1]
         self.bin_counts = [self.add_weight('count_{:d}'.format(i), initializer='zeros') for i in range(num_bins)]

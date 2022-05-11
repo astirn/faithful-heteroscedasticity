@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
-from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectationCalibrationError
+from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
 from data_regression import generate_toy_data
 
 
@@ -370,7 +370,7 @@ if __name__ == '__main__':
     mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
         MeanLogLikelihood(),
         RootMeanSquaredError(),
-        ExpectationCalibrationError(),
+        ExpectedCalibrationError(),
     ])
 
     # train model
