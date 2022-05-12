@@ -89,6 +89,8 @@ for fold in np.unique(data['split']):
             if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
                 print(model.name + ' exists. Loading...')
                 model.load_weights(os.path.join(model_dir, 'best_checkpoint'))
+                with open(os.path.join(model_dir, 'hist.pkl'), 'rb') as f:
+                    history = pickle.load(f)
 
             # otherwise, train and save the model
             else:
@@ -98,8 +100,9 @@ for fold in np.unique(data['split']):
                                  batch_size=x_train.shape[0], epochs=int(20e3), verbose=0,
                                  callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
                 model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
+                history = hist.history
                 with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:
-                    pickle.dump(hist.history, f)
+                    pickle.dump(history, f)
 
             # test model
             test_metrics = model.evaluate(x=x_valid, y=y_valid, verbose=0)
@@ -107,7 +110,7 @@ for fold in np.unique(data['split']):
 
             # update results table
             new_results = pd.DataFrame(
-                data={'Model': model.name, 'Architecture': str(nn_kwargs),
+                data={'Model': model.name, 'Architecture': str(nn_kwargs), 'Epochs': len(history['LL']),
                       'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
                 index=pd.MultiIndex.from_arrays([[fold], [trial]], names=['fold', 'trial']))
             results = pd.concat([results, new_results])
