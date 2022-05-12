@@ -110,11 +110,11 @@ class Normal(HeteroscedasticRegression, ABC):
         mean, precision = self.call(args[0], training=False) if len(args) == 1 else args
         mean = self.de_whiten_mean(mean)
         stddev = self.de_whiten_precision(precision) ** -0.5
-        return tfp.distributions.Normal(loc=mean, scale=stddev)
+        return tfpd.Normal(loc=mean, scale=stddev)
 
     def update_metrics(self, y, mean, precision):
         py_x = self.predictive_distribution(mean, precision)
-        prob_errors = tfp.distributions.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
+        prob_errors = tfpd.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
@@ -185,11 +185,12 @@ class Student(HeteroscedasticRegression):
         mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
         loc = self.de_whiten_mean(mu)
         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        return tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
+        return tfpd.StudentT(df=2 * alpha, loc=loc, scale=scale)
 
     def update_metrics(self, y, mu, alpha, beta):
         py_x = self.predictive_distribution(mu, alpha, beta)
-        prob_errors = tfp.distributions.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / py_x.stddev())
+        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+        prob_errors = tfpd.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / scale)
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
@@ -201,7 +202,7 @@ class Student(HeteroscedasticRegression):
             mu, alpha, beta = self.call(x, training=True)
 
             # minimize negative log likelihood
-            py_x = tfp.distributions.StudentT(df=2 * alpha, loc=mu, scale=tf.sqrt(beta / alpha))
+            py_x = tfpd.StudentT(df=2 * alpha, loc=mu, scale=tf.sqrt(beta / alpha))
             ll = tf.reduce_sum(py_x.log_prob(self.whiten_targets(y)), axis=-1)
             loss = tf.reduce_mean(-ll)
 
@@ -221,7 +222,7 @@ class VariationalGammaNormal(HeteroscedasticRegression):
         # precision prior
         self.empirical_bayes = empirical_bayes
         self.sq_err_scale = sq_err_scale
-        self.p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma([2.0] * dim_y, [1.0] * dim_y), 1)
+        self.p_lambda = tfpd.Independent(tfpd.Gamma([2.0] * dim_y, [1.0] * dim_y), 1)
 
         # parameter networks
         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
@@ -235,11 +236,12 @@ class VariationalGammaNormal(HeteroscedasticRegression):
         mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
         loc = self.de_whiten_mean(mu)
         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        return tfp.distributions.StudentT(df=2 * alpha, loc=loc, scale=scale)
+        return tfpd.StudentT(df=2 * alpha, loc=loc, scale=scale)
 
     def update_metrics(self, y, mu, alpha, beta):
         py_x = self.predictive_distribution(mu, alpha, beta)
-        prob_errors = tfp.distributions.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / py_x.stddev())
+        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+        prob_errors = tfpd.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / scale)
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
@@ -250,7 +252,7 @@ class VariationalGammaNormal(HeteroscedasticRegression):
             sq_errors = (self.whiten_targets(y) - self.mu(x)) ** 2
             a = tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2
             b = (a - 1) * tf.reduce_mean(sq_errors, axis=0) / self.sq_err_scale
-            p_lambda = tfp.distributions.Independent(tfp.distributions.Gamma(a, b), 1)
+            p_lambda = tfpd.Independent(tfpd.Gamma(a, b), 1)
 
         # standard prior
         else:
@@ -262,7 +264,7 @@ class VariationalGammaNormal(HeteroscedasticRegression):
             mu, alpha, beta = self.call(x, training=True)
 
             # variational family
-            qp = tfp.distributions.Independent(tfp.distributions.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
+            qp = tfpd.Independent(tfpd.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
 
             # use negative evidence lower bound as minimization objective
             y = self.whiten_targets(y)
