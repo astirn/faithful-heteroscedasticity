@@ -203,7 +203,6 @@ def generate_toy_data(num_samples=500, sparse=False):
 
 
 def create_or_load_fold(dataset, num_folds, save_path=None):
-    global data
     assert isinstance(num_folds, int) and num_folds > 0
 
     # if save path was provided and a data pickle exists therein, load it
