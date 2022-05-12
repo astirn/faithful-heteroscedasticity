@@ -97,7 +97,7 @@ for fold in np.unique(data['split']):
                 valid_freq = 100
                 hist = model.fit(x=x_train, y=y_train,
                                  validation_data=(x_valid, y_valid), validation_freq=valid_freq,
-                                 batch_size=x_train.shape[0], epochs=int(20e3), verbose=0,
+                                 batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
                                  callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
                 model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
                 history = hist.history
