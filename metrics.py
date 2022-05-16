@@ -3,17 +3,17 @@ import tensorflow_probability as tfp
 
 
 def pack_predictor_values(mean, ll, prob_errors):
-    return tf.concat([mean, ll, prob_errors], axis=1)
+    return tf.concat([mean, ll, prob_errors], axis=-1)
 
 
 def unpack_predictor_values(predictor_values, request):
-    predictor_values= tf.split(predictor_values, num_or_size_splits=3, axis=1)
+    predictor_values = tf.split(predictor_values, num_or_size_splits=3, axis=-1)
     if request == 'mean':
         return predictor_values[0]
     elif request == 'll':
-        return predictor_values[1]
+        return tf.keras.layers.Flatten()(predictor_values[1])
     elif request == 'prob_errors':
-        return predictor_values[2]
+        return tf.keras.layers.Flatten()(predictor_values[2])
     else:
         raise NotImplementedError
 
@@ -55,7 +55,7 @@ class RootMeanSquaredError(Mean):
     def update_state(self, y_true, y_pred, sample_weight=None):
         y_true = tf.cast(y_true, self._dtype)
         mean = tf.cast(unpack_predictor_values(y_pred, 'mean'), self._dtype)
-        sq_err = tf.reduce_sum(tf.math.squared_difference(y_true, mean), axis=-1)
+        sq_err = tf.reduce_sum(tf.keras.layers.Flatten()(tf.math.squared_difference(y_true, mean)), axis=1)
         return super(RootMeanSquaredError, self).update_state(values=sq_err, sample_weight=sample_weight)
 
     def result(self):
