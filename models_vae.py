@@ -100,8 +100,12 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
 
 class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
-    def __init__(self, dim_x, dim_z, decoder, **kwargs):
-        HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name='NormalVAE', **kwargs)
+    def __init__(self, dim_x, dim_z, decoder, optimization, **kwargs):
+        name = 'NormalVAE' + '-' + optimization
+        HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
+
+        # save optimization method
+        self.optimization = optimization
 
         # decoder networks
         self.mean = decoder(dim_z, [128, 256, 512], np.prod(dim_x), f_out=None, name='mu', **kwargs)
@@ -110,16 +114,24 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
     def call(self, x, **kwargs):
 
         # variational family and its KL-divergence
-        qz_x = self.q_z(x)
+        qz_x = self.q_z(x, **kwargs)
         dkl = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
 
         # Monte-Carlo estimate expected log likelihood
         z_samples = qz_x.sample(sample_shape=self.num_mc_samples)
         z_samples = tf.reshape(tf.transpose(z_samples, [1, 0, 2]), [-1, self.dim_z])
-        mean = tf.reshape(self.mean(z_samples), [-1, self.num_mc_samples] + list(self.dim_x))
-        precision = tf.reshape(self.precision(z_samples), [-1, self.num_mc_samples] + list(self.dim_x))
-        p_x_z = tfpd.Independent(tfpd.Normal(mean, precision ** -0.5), tf.rank(mean) - 2)
-        ell = tf.reduce_mean(p_x_z.log_prob(x[:, None, ...]))
+        mean = tf.reshape(self.mean(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        precision = tf.reshape(self.precision(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        if self.optimization == 'first-order':
+            p_x_z = tfpd.Independent(tfpd.Normal(mean, precision ** -0.5), tf.rank(mean) - 2)
+            ell = tf.reduce_mean(p_x_z.log_prob(x[:, None, ...]))
+        elif self.optimization == 'second-order-mean':
+            sq_error = (x[:, None, ...] - mean) ** 2
+            sq_error = tf.reduce_sum(tf.reshape(sq_error, tf.concat([tf.shape(sq_error)[:2], [-1]], axis=0)), axis=-1)
+            p_x_z = tfpd.Independent(tfpd.Normal(tf.stop_gradient(mean), precision ** -0.5), tf.rank(mean) - 2)
+            ell = tf.reduce_mean(p_x_z.log_prob(x[:, None, ...]) - 0.5 * sq_error)
+        else:
+            raise NotImplementedError
 
         # negative evidence lower bound
         loss = -(ell - dkl)
@@ -144,7 +156,7 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
 
 
-def plot_posterior_predictive_checks(x, p_x_x, num_samples=10, column_wise=False):
+def plot_posterior_predictive_checks(x, p_x_x, title, num_samples=10, column_wise=False):
 
     # randomly select data subset
     i = np.random.choice(x.shape[0], num_samples, replace=False)
@@ -157,8 +169,10 @@ def plot_posterior_predictive_checks(x, p_x_x, num_samples=10, column_wise=False
     sample = np.concatenate([np.squeeze(xx) for xx in np.split(p_x_x.sample().numpy()[i], num_samples)], axis=axis)
 
     # plot results
+    fig, ax = plt.subplots(1, 1)
+    fig.suptitle(title)
     ppc = np.concatenate([x_plot, mean, std, sample], axis=int(column_wise))
-    plt.imshow(ppc, vmin=0, vmax=1, cmap='gray_r')
+    ax.imshow(ppc, vmin=0, vmax=1, cmap='gray_r')
 
 
 if __name__ == '__main__':
@@ -167,10 +181,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=2048, help='which model to use')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--model', type=str, default='Normal', help='which model to use')
-    parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Variational Gamma-Normal')
-    parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Variational Gamma-Normal')
-    parser.add_argument('--sparse', action='store_true', default=False, help='sparse toy data option')
+    parser.add_argument('--model', type=str, default='NormalVAE', help='which model to use')
+    parser.add_argument('--optimization', type=str, default='first-order', help='for Normal VAE')
+    parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Gamma-Normal VAE')
+    parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Gamma-Normal VAE')
     args = parser.parse_args()
 
     # load data
@@ -178,7 +192,7 @@ if __name__ == '__main__':
 
     # pick the appropriate model
     plot_title = args.model
-    if args.model == 'Normal':
+    if args.model == 'NormalVAE':
         MODEL = NormalVAE
     else:
         raise NotImplementedError
@@ -190,12 +204,13 @@ if __name__ == '__main__':
         encoder=encoder_dense,
         decoder=decoder_dense,
         num_mc_samples=20,
-        empirical_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
-        sq_err_scale=args.sq_err_scale,  # for Variational Gamma-Normal
+        optimization=args.optimization,  # for Normal VAE
+        empirical_bayes=args.empirical_bayes,  # for Gamma-Normal VAE
+        sq_err_scale=args.sq_err_scale,  # for Gamma-Normal VAE
     )
 
     # build the model
-    optimizer = tf.keras.optimizers.Adam(1e-4)
+    optimizer = tf.keras.optimizers.Adam(5e-5)
     mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
         MeanLogLikelihood(),
         RootMeanSquaredError(),
@@ -211,5 +226,5 @@ if __name__ == '__main__':
     x_valid, *params = mdl.predict(ds_valid)
 
     # plot posterior predictive checks
-    plot_posterior_predictive_checks(x_valid, mdl.predictive_distribution(*params))
+    plot_posterior_predictive_checks(x_valid, mdl.predictive_distribution(*params), title=mdl.name)
     plt.show()
