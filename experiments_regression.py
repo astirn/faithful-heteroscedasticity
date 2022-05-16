@@ -15,6 +15,7 @@ from sklearn import preprocessing
 # script arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='boston', help='which dataset to use')
+parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
 parser.add_argument('--split_seed', type=int, default=853211, help='number of trials per fold')
@@ -76,7 +77,7 @@ for fold in np.unique(data['split']):
                 **model_and_config['config'], **nn_kwargs
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
-            model.compile(optimizer=optimizer, metrics=[
+            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
                 MeanLogLikelihood(),
                 RootMeanSquaredError(),
                 ExpectedCalibrationError()
