@@ -88,7 +88,7 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
         x = self.parse_keras_inputs(data)
 
         # update metrics
-        self.update_metrics(x, *self.call(x, training=True))
+        self.update_metrics(x, *self.call(x, training=True)[1:])
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -104,17 +104,19 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
     def call(self, x, **kwargs):
 
-        # variational family
+        # variational family and its KL-divergence
         qz_x = self.q_z(x)
+        dkl = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
 
         # Monte-Carlo estimate expected log likelihood
         z_samples = tf.reshape(qz_x.sample(sample_shape=self.num_mc_samples), [-1, self.dim_z])
         mean = tf.reshape(self.mean(z_samples), [self.num_mc_samples, -1] + list(self.dim_x))
         precision = tf.reshape(self.precision(z_samples), [self.num_mc_samples, -1] + list(self.dim_x))
-        ln_p_x_z = tf.reduce_mean(tf.einsum('mbijc->mb', tfpd.Normal(mean, precision).log_prob(x)))
+        p_x_z = tfpd.Independent(tfpd.Normal(mean, precision ** -0.5), tf.rank(mean) - 2)
+        ell = tf.reduce_mean(p_x_z.log_prob(x))
 
-        # evidence lower bound
-        loss = -ln_p_x_z + tf.reduce_mean(qz_x.kl_divergence(self.p_z))
+        # negative evidence lower bound
+        loss = -(ell - dkl)
 
         return loss, mean, precision
 
@@ -143,7 +145,8 @@ if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action='store_true', default=False, help='sparse toy data option')
+    parser.add_argument('--batch_size', type=int, default=2048, help='which model to use')
+    parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--model', type=str, default='Normal', help='which model to use')
     parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Variational Gamma-Normal')
     parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Variational Gamma-Normal')
@@ -151,7 +154,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # load data
-    ds_train, ds_valid = load_data('mnist')
+    ds_train, ds_valid = load_data('mnist', batch_size=args.batch_size)
 
     # pick the appropriate model
     plot_title = args.model
