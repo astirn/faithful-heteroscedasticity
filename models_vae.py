@@ -1,10 +1,10 @@
 import argparse
 
 import numpy as np
-import seaborn as sns
 import tensorflow as tf
 import tensorflow_probability as tfp
 
+from matplotlib import pyplot as plt
 from tensorflow_probability import distributions as tfpd
 
 from callbacks import RegressionCallback
@@ -71,12 +71,17 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
             raise NotImplementedError
         return x
 
+    def predict_step(self, data):
+        x = self.parse_keras_inputs(data)
+
+        return x, *self.call(x, training=False)[1:]
+
     def train_step(self, data):
         x = self.parse_keras_inputs(data)
 
         # optimization step
         with tf.GradientTape() as tape:
-            loss, *params = self.call(x)
+            loss, *params = self.call(x, training=True)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
 
         # update metrics
@@ -88,7 +93,7 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
         x = self.parse_keras_inputs(data)
 
         # update metrics
-        self.update_metrics(x, *self.call(x, training=True)[1:])
+        self.update_metrics(x, *self.call(x, training=False)[1:])
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -109,11 +114,12 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         dkl = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
 
         # Monte-Carlo estimate expected log likelihood
-        z_samples = tf.reshape(qz_x.sample(sample_shape=self.num_mc_samples), [-1, self.dim_z])
-        mean = tf.reshape(self.mean(z_samples), [self.num_mc_samples, -1] + list(self.dim_x))
-        precision = tf.reshape(self.precision(z_samples), [self.num_mc_samples, -1] + list(self.dim_x))
+        z_samples = qz_x.sample(sample_shape=self.num_mc_samples)
+        z_samples = tf.reshape(tf.transpose(z_samples, [1, 0, 2]), [-1, self.dim_z])
+        mean = tf.reshape(self.mean(z_samples), [-1, self.num_mc_samples] + list(self.dim_x))
+        precision = tf.reshape(self.precision(z_samples), [-1, self.num_mc_samples] + list(self.dim_x))
         p_x_z = tfpd.Independent(tfpd.Normal(mean, precision ** -0.5), tf.rank(mean) - 2)
-        ell = tf.reduce_mean(p_x_z.log_prob(x))
+        ell = tf.reduce_mean(p_x_z.log_prob(x[:, None, ...]))
 
         # negative evidence lower bound
         loss = -(ell - dkl)
@@ -122,7 +128,7 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
     def predictive_distribution(self, *args):
         mean, precision = self.call(args[0], training=False)[1:] if len(args) == 1 else args
-        permutation = tf.concat([tf.range(1, tf.rank(mean)), [0]], axis=0)
+        permutation = tf.concat([[0], tf.range(2, tf.rank(mean)), [1]], axis=0)
         mean = tf.transpose(mean, permutation)
         precision = tf.transpose(precision, permutation)
         p_x_x = tfpd.MixtureSameFamily(
@@ -138,10 +144,24 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
 
 
-if __name__ == '__main__':
+def plot_posterior_predictive_checks(x, p_x_x, num_samples=10, column_wise=False):
 
-    # enable background tiles on plots
-    sns.set(color_codes=True)
+    # randomly select data subset
+    i = np.random.choice(x.shape[0], num_samples, replace=False)
+
+    # concatenate each randomly selected data and its PPC along the non-plotting axis
+    axis = int(not column_wise)
+    x_plot = np.concatenate([np.squeeze(xx) for xx in np.split(x[i], num_samples)], axis=axis)
+    mean = np.concatenate([np.squeeze(xx) for xx in np.split(p_x_x.mean().numpy()[i], num_samples)], axis=axis)
+    std = np.concatenate([np.squeeze(xx) for xx in np.split(p_x_x.stddev().numpy()[i], num_samples)], axis=axis)
+    sample = np.concatenate([np.squeeze(xx) for xx in np.split(p_x_x.sample().numpy()[i], num_samples)], axis=axis)
+
+    # plot results
+    ppc = np.concatenate([x_plot, mean, std, sample], axis=int(column_wise))
+    plt.imshow(ppc, vmin=0, vmax=1, cmap='gray_r')
+
+
+if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
@@ -183,5 +203,13 @@ if __name__ == '__main__':
     ])
 
     # train model
-    validation_freq = 500
-    hist = mdl.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(20e3), verbose=2)
+    validation_freq = 1
+    hist = mdl.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(20e3), verbose=0,
+                   callbacks=[RegressionCallback(validation_freq=validation_freq, early_stop_patience=6)])
+
+    # posterior predictive parameters for validation data
+    x_valid, *params = mdl.predict(ds_valid)
+
+    # plot posterior predictive checks
+    plot_posterior_predictive_checks(x_valid, mdl.predictive_distribution(*params))
+    plt.show()
