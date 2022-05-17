@@ -162,7 +162,10 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 class StudentVAE(HeteroscedasticVariationalAutoencoder):
 
     def __init__(self, dim_x, dim_z, decoder, min_df, **kwargs):
-        name = 'StudentVAE-DimZ-{:d}-MinDoF-{:.3f}'.format(dim_z, min_df)
+        if 'name' in kwargs.keys():
+            name = kwargs.pop('name')
+        else:
+            name = 'StudentVAE-DimZ-{:d}-MinDoF-{:.3f}'.format(dim_z, min_df)
         HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
 
         # decoder networks
@@ -214,25 +217,18 @@ class StudentVAE(HeteroscedasticVariationalAutoencoder):
         self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
 
 
-class GammaNormalVAE(HeteroscedasticVariationalAutoencoder):
+class GammaNormalVAE(StudentVAE):
 
     def __init__(self, dim_x, dim_z, decoder, min_df, empirical_bayes, prior_scale, **kwargs):
         name = 'GammaNormalVAE-DimZ-{:d}-MinDoF-{:.3f}-bScale-{:.3f}'.format(dim_z, min_df, prior_scale)
         name += ('-EB' if empirical_bayes else '')
-        HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
+        StudentVAE.__init__(self, dim_x, dim_z, decoder, min_df, name=name, **kwargs)
 
         # precision prior
         self.empirical_bayes = empirical_bayes
         self.prior_scale = prior_scale
         self.a = tf.Variable(min_df * tf.ones(self.dim_x), trainable=False)
         self.b = tf.Variable(1e-3 * (min_df - 1) * tf.ones(self.dim_x), trainable=False)
-
-        # decoder networks
-        arch = [128, 256, 512]
-        dim_x = np.prod(dim_x)
-        self.mu = decoder(dim_z, arch, dim_x, f_out=None, name='mu', **kwargs)
-        self.alpha = decoder(dim_z, arch, dim_x, f_out=lambda x: min_df / 2 + tf.nn.softplus(x), name='alpha', **kwargs)
-        self.beta = decoder(dim_z, arch, dim_x, f_out='softplus', name='beta', **kwargs)
 
     def call(self, x, **kwargs):
 
@@ -272,25 +268,6 @@ class GammaNormalVAE(HeteroscedasticVariationalAutoencoder):
         loss = -(ell - dkl_z - dkl_p)
 
         return loss, mu, alpha, beta
-
-    @staticmethod
-    def predictive_distribution(mu, alpha, beta):
-        permutation = tf.concat([[0], tf.range(2, tf.rank(mu)), [1]], axis=0)
-        df = tf.transpose(2 * alpha, permutation)
-        mean = tf.transpose(mu, permutation)
-        scale = tf.transpose(tf.sqrt(beta / alpha), permutation)
-        p_x_x = tfpd.MixtureSameFamily(
-            mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(mean)[-1])),
-            components_distribution=tfpd.StudentT(df=df, loc=mean, scale=scale))
-        return p_x_x
-
-    def update_metrics(self, x, mu, alpha, beta):
-        p_x_x = self.predictive_distribution(mu, alpha, beta)
-        df = tf.reduce_mean(2 * alpha, axis=1)
-        std_errors = tf.reduce_mean((x[:, None, ...] - mu) / tf.sqrt(beta / alpha), axis=1)
-        prob_errors = tfpd.StudentT(df=df, loc=tf.zeros_like(x), scale=tf.ones_like(x)).cdf(std_errors)
-        predictor_values = pack_predictor_values(p_x_x.mean(), p_x_x.log_prob(x), prob_errors)
-        self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
 
 
 def plot_posterior_predictive_checks(x, p_x_x, title, num_samples=10, column_wise=False):
