@@ -86,9 +86,9 @@ for trial in range(1, args.num_trials + 1):
         # otherwise, train and save the model
         else:
             validation_freq = 1
-            hist = model.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(3),
+            hist = model.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(20e3),
                              verbose=0,
-                             callbacks=[RegressionCallback(validation_freq=validation_freq, early_stop_patience=6)])
+                             callbacks=[RegressionCallback(validation_freq=validation_freq, early_stop_patience=20)])
             model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
             history = hist.history
             with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:

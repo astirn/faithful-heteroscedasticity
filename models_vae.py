@@ -39,7 +39,7 @@ def decoder_dense(dim_in, hidden_dims, dim_out, f_out, name, **kwargs):
 
 class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
 
-    def __init__(self, dim_x, dim_z, encoder, num_mc_samples, **kwargs):
+    def __init__(self, dim_x, dim_z, encoder, encoder_arch, num_mc_samples, **kwargs):
         assert isinstance(dim_x, (list, tuple))
         assert isinstance(dim_z, int) and dim_z > 0
         assert isinstance(num_mc_samples, int) and num_mc_samples > 0
@@ -58,7 +58,7 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
         self.flatten = tf.keras.layers.Flatten()
 
         # encoder network
-        self.q_z = encoder(dim_x, [512, 256, 128], 2 * dim_z, name='q_z', **kwargs)
+        self.q_z = encoder(dim_x, encoder_arch, 2 * dim_z, name='q_z', **kwargs)
         self.q_z.add(tfp.layers.IndependentNormal(dim_z))
 
     @staticmethod
@@ -100,7 +100,7 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
 
 class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
-    def __init__(self, dim_x, dim_z, decoder, optimization, **kwargs):
+    def __init__(self, dim_x, dim_z, decoder, decoder_arch, optimization, **kwargs):
         name = 'NormalVAE-DimZ-{:d}-'.format(dim_z) + optimization
         HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
 
@@ -108,10 +108,9 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         self.optimization = optimization
 
         # decoder networks
-        arch = [128, 256, 512]
         dim_x = np.prod(dim_x)
-        self.mean = decoder(dim_z, arch, dim_x, f_out=None, name='mean', **kwargs)
-        self.precision = decoder(dim_z, arch, dim_x, f_out='softplus', name='precision', **kwargs)
+        self.mean = decoder(dim_z, decoder_arch, dim_x, f_out=None, name='mean')
+        self.precision = decoder(dim_z, decoder_arch, dim_x, f_out='softplus', name='precision')
 
     def call(self, x, **kwargs):
 
@@ -161,7 +160,7 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
 class StudentVAE(HeteroscedasticVariationalAutoencoder):
 
-    def __init__(self, dim_x, dim_z, decoder, min_df, **kwargs):
+    def __init__(self, dim_x, dim_z, decoder, decoder_arch, min_df, **kwargs):
         if 'name' in kwargs.keys():
             name = kwargs.pop('name')
         else:
@@ -169,11 +168,10 @@ class StudentVAE(HeteroscedasticVariationalAutoencoder):
         HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
 
         # decoder networks
-        arch = [128, 256, 512]
         dim_x = np.prod(dim_x)
-        self.mu = decoder(dim_z, arch, dim_x, f_out=None, name='mu', **kwargs)
-        self.alpha = decoder(dim_z, arch, dim_x, f_out=lambda x: min_df / 2 + tf.nn.softplus(x), name='alpha', **kwargs)
-        self.beta = decoder(dim_z, arch, dim_x, f_out='softplus', name='beta', **kwargs)
+        self.mu = decoder(dim_z, decoder_arch, dim_x, f_out=None, name='mu')
+        self.alpha = decoder(dim_z, decoder_arch, dim_x, f_out=lambda x: min_df / 2 + tf.nn.softplus(x), name='alpha')
+        self.beta = decoder(dim_z, decoder_arch, dim_x, f_out='softplus', name='beta')
 
     def call(self, x, **kwargs):
 
@@ -219,16 +217,16 @@ class StudentVAE(HeteroscedasticVariationalAutoencoder):
 
 class GammaNormalVAE(StudentVAE):
 
-    def __init__(self, dim_x, dim_z, decoder, min_df, empirical_bayes, prior_scale, **kwargs):
+    def __init__(self, dim_x, dim_z, decoder, decoder_arch, min_df, empirical_bayes, prior_scale, **kwargs):
         name = 'GammaNormalVAE-DimZ-{:d}-MinDoF-{:.3f}-bScale-{:.3f}'.format(dim_z, min_df, prior_scale)
         name += ('-EB' if empirical_bayes else '')
-        StudentVAE.__init__(self, dim_x, dim_z, decoder, min_df, name=name, **kwargs)
+        StudentVAE.__init__(self, dim_x, dim_z, decoder, decoder_arch, min_df, name=name, **kwargs)
 
         # precision prior
         self.empirical_bayes = empirical_bayes
         self.prior_scale = prior_scale
         self.a = tf.Variable(min_df * tf.ones(self.dim_x), trainable=False)
-        self.b = tf.Variable(1e-3 * (min_df - 1) * tf.ones(self.dim_x), trainable=False)
+        self.b = tf.Variable(prior_scale * (min_df - 1) * tf.ones(self.dim_x), trainable=False)
 
     def call(self, x, **kwargs):
 
@@ -321,7 +319,9 @@ if __name__ == '__main__':
         dim_x=(28, 28, 1),
         dim_z=10,
         encoder=encoder_dense,
+        encoder_arch=[512, 256, 128],
         decoder=decoder_dense,
+        decoder_arch=[128, 256, 512],
         num_mc_samples=20,
         optimization=args.optimization,  # for Normal VAE
         min_df=args.min_df,  # for Student and Gamma-Normal VAE
