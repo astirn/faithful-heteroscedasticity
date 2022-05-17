@@ -159,21 +159,23 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
 class GammaNormalVAE(HeteroscedasticVariationalAutoencoder):
 
-    def __init__(self, dim_x, dim_z, decoder, **kwargs):
-        name = 'GammaNormalVAE'
+    def __init__(self, dim_x, dim_z, decoder, min_df, empirical_bayes, prior_scale, **kwargs):
+        name = 'GammaNormalVAE-DimZ-{:d}-MinDoF-{:.3f}-bScale-{:.3f}'.format(dim_z, min_df, prior_scale)
+        name += ('-EB' if empirical_bayes else '')
         HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
 
         # precision prior
-        # self.empirical_bayes = empirical_bayes
-        # self.sq_err_scale = tf.Variable(sq_err_scale if isinstance(sq_err_scale, float) else 1.0, trainable=sq_err_scale == 'T', name='sq_err_scale')
-        self.a = tf.Variable(3 * tf.ones(self.dim_x), trainable=False)
-        self.b = tf.Variable(1e-3 * (3 - 1) * tf.ones(self.dim_x), trainable=False)
+        self.empirical_bayes = empirical_bayes
+        self.prior_scale = prior_scale
+        self.a = tf.Variable(min_df * tf.ones(self.dim_x), trainable=False)
+        self.b = tf.Variable(1e-3 * (min_df - 1) * tf.ones(self.dim_x), trainable=False)
 
         # decoder networks
         arch = [128, 256, 512]
-        self.mu = decoder(dim_z, arch, np.prod(dim_x), f_out=None, name='mu', **kwargs)
-        self.alpha = decoder(dim_z, arch, np.prod(dim_x), f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
-        self.beta = decoder(dim_z, arch, np.prod(dim_x), f_out='softplus', name='beta', **kwargs)
+        dim_x = np.prod(dim_x)
+        self.mu = decoder(dim_z, arch, dim_x, f_out=None, name='mu', **kwargs)
+        self.alpha = decoder(dim_z, arch, dim_x, f_out=lambda x: min_df / 2 + tf.nn.softplus(x), name='alpha', **kwargs)
+        self.beta = decoder(dim_z, arch, dim_x, f_out='softplus', name='beta', **kwargs)
 
     def call(self, x, **kwargs):
 
@@ -189,11 +191,21 @@ class GammaNormalVAE(HeteroscedasticVariationalAutoencoder):
         mu = tf.reshape(self.mu(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
         expected_lambda = alpha / beta
         expected_ln_lambda = tf.math.digamma(alpha) - tf.math.log(beta)
-        ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - (x[:, None, ...] - mu) ** 2 * expected_lambda)
+        sq_errors = (x[:, None, ...] - mu) ** 2
+        ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - sq_errors * expected_lambda)
         ell = tf.reduce_mean(tf.reduce_sum(tf.reshape(ell, tf.concat([tf.shape(ell)[:2], [-1]], axis=0)), axis=-1))
 
         # precision prior
-        p_lambda = tfpd.Independent(tfpd.Gamma(self.a, self.b), tf.rank(x) - 1)
+        if self.empirical_bayes:
+            sq_errors = tf.stop_gradient(sq_errors)
+            sq_errors = tf.reshape(sq_errors, [-1] + list(self.dim_x))
+            mse = tf.reduce_mean(sq_errors)  # , axis=0)
+            vse = tf.math.reduce_variance(sq_errors)  # , axis=0)
+            a = (mse ** 2 / vse + 2) * tf.ones(self.dim_x)
+            b = (a - 1) * mse * tf.ones(self.dim_x)
+            p_lambda = tfpd.Independent(tfpd.Gamma(a, b / self.prior_scale), tf.rank(x) - 1)
+        else:
+            p_lambda = tfpd.Independent(tfpd.Gamma(self.a, self.b), tf.rank(x) - 1)
 
         # KL divergences
         dkl_z = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
@@ -247,12 +259,13 @@ if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=2048, help='which model to use')
+    parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
+    parser.add_argument('--min_df', type=float, default=3.0, help='min DoF for Student and Gamma-Normal VAEs')
     parser.add_argument('--model', type=str, default='NormalVAE', help='which model to use')
     parser.add_argument('--optimization', type=str, default='first-order', help='for Normal VAE')
     parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Gamma-Normal VAE')
-    parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Gamma-Normal VAE')
+    parser.add_argument('--prior_scale', type=float, default=1.0, help='for Gamma-Normal VAE')
     args = parser.parse_args()
 
     # load data
@@ -275,8 +288,9 @@ if __name__ == '__main__':
         decoder=decoder_dense,
         num_mc_samples=20,
         optimization=args.optimization,  # for Normal VAE
+        min_df=args.min_df,  # for Student and Gamma-Normal VAE
         empirical_bayes=args.empirical_bayes,  # for Gamma-Normal VAE
-        sq_err_scale=args.sq_err_scale,  # for Gamma-Normal VAE
+        prior_scale=args.prior_scale,  # for Gamma-Normal VAE
     )
 
     # build the model
