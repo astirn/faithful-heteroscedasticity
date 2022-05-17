@@ -108,8 +108,9 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         self.optimization = optimization
 
         # decoder networks
-        self.mean = decoder(dim_z, [128, 256, 512], np.prod(dim_x), f_out=None, name='mu', **kwargs)
-        self.precision = decoder(dim_z, [128, 256, 512], np.prod(dim_x), f_out='softplus', name='lambda', **kwargs)
+        arch = [128, 256, 512]
+        self.mean = decoder(dim_z, arch, np.prod(dim_x), f_out=None, name='mu', **kwargs)
+        self.precision = decoder(dim_z, arch, np.prod(dim_x), f_out='softplus', name='lambda', **kwargs)
 
     def call(self, x, **kwargs):
 
@@ -156,6 +157,73 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
 
 
+class GammaNormalVAE(HeteroscedasticVariationalAutoencoder):
+
+    def __init__(self, dim_x, dim_z, decoder, **kwargs):
+        name = 'GammaNormalVAE'
+        HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
+
+        # precision prior
+        # self.empirical_bayes = empirical_bayes
+        # self.sq_err_scale = tf.Variable(sq_err_scale if isinstance(sq_err_scale, float) else 1.0, trainable=sq_err_scale == 'T', name='sq_err_scale')
+        self.a = tf.Variable(3 * tf.ones(self.dim_x), trainable=False)
+        self.b = tf.Variable(1e-3 * (3 - 1) * tf.ones(self.dim_x), trainable=False)
+
+        # decoder networks
+        arch = [128, 256, 512]
+        self.mu = decoder(dim_z, arch, np.prod(dim_x), f_out=None, name='mu', **kwargs)
+        self.alpha = decoder(dim_z, arch, np.prod(dim_x), f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
+        self.beta = decoder(dim_z, arch, np.prod(dim_x), f_out='softplus', name='beta', **kwargs)
+
+    def call(self, x, **kwargs):
+
+        # variational family and Monte-Carlo samples
+        qz_x = self.q_z(x, **kwargs)
+        z_samples = qz_x.sample(sample_shape=self.num_mc_samples)
+        z_samples = tf.reshape(tf.transpose(z_samples, [1, 0, 2]), [-1, self.dim_z])
+        alpha = tf.reshape(self.alpha(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        beta = tf.reshape(self.beta(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        qp_z = tfpd.Independent(tfpd.Gamma(alpha, beta), reinterpreted_batch_ndims=len(self.dim_x))
+
+        # expected log likelihood
+        mu = tf.reshape(self.mu(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        expected_lambda = alpha / beta
+        expected_ln_lambda = tf.math.digamma(alpha) - tf.math.log(beta)
+        ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - (x[:, None, ...] - mu) ** 2 * expected_lambda)
+        ell = tf.reduce_mean(tf.reduce_sum(tf.reshape(ell, tf.concat([tf.shape(ell)[:2], [-1]], axis=0)), axis=-1))
+
+        # precision prior
+        p_lambda = tfpd.Independent(tfpd.Gamma(self.a, self.b), tf.rank(x) - 1)
+
+        # KL divergences
+        dkl_z = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
+        dkl_p = tf.reduce_mean(qp_z.kl_divergence(p_lambda))
+
+        # negative evidence lower bound
+        loss = -(ell - dkl_z - dkl_p)
+
+        return loss, mu, alpha, beta
+
+    @staticmethod
+    def predictive_distribution(mu, alpha, beta):
+        permutation = tf.concat([[0], tf.range(2, tf.rank(mu)), [1]], axis=0)
+        df = tf.transpose(2 * alpha, permutation)
+        mean = tf.transpose(mu, permutation)
+        scale = tf.transpose(tf.sqrt(beta / alpha), permutation)
+        p_x_x = tfpd.MixtureSameFamily(
+            mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(mean)[-1])),
+            components_distribution=tfpd.StudentT(df=df, loc=mean, scale=scale))
+        return p_x_x
+
+    def update_metrics(self, x, mu, alpha, beta):
+        p_x_x = self.predictive_distribution(mu, alpha, beta)
+        df = tf.reduce_mean(2 * alpha, axis=1)
+        std_errors = tf.reduce_mean((x[:, None, ...] - mu) / tf.sqrt(beta / alpha), axis=1)
+        prob_errors = tfpd.StudentT(df=df, loc=tf.zeros_like(x), scale=tf.ones_like(x)).cdf(std_errors)
+        predictor_values = pack_predictor_values(p_x_x.mean(), p_x_x.log_prob(x), prob_errors)
+        self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
+
+
 def plot_posterior_predictive_checks(x, p_x_x, title, num_samples=10, column_wise=False):
 
     # randomly select data subset
@@ -194,6 +262,8 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'NormalVAE':
         MODEL = NormalVAE
+    if args.model == 'GammaNormalVAE':
+        MODEL = GammaNormalVAE
     else:
         raise NotImplementedError
 
