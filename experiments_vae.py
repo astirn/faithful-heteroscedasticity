@@ -34,9 +34,13 @@ models_and_configs = [
     {'model': NormalVAE, 'config': {'optimization': 'second-order-mean'}},
     {'model': StudentVAE, 'config': {'min_df': 3}},
     {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': False, 'prior_scale': 1e-3}},
-    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.25}},
-    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.50}},
+    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.25}},
+    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.50}},
     {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.75}},
+    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.85}},
+    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 1.00}},
+    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 1.15}},
+    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 1.25}},
 ]
 
 # load data folds
