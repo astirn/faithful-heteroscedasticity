@@ -101,7 +101,7 @@ class HeteroscedasticVariationalAutoencoder(tf.keras.Model):
 class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
     def __init__(self, dim_x, dim_z, decoder, optimization, **kwargs):
-        name = 'NormalVAE' + '-' + optimization
+        name = 'NormalVAE-DimZ-{:d}-'.format(dim_z) + optimization
         HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
 
         # save optimization method
@@ -109,18 +109,18 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
         # decoder networks
         arch = [128, 256, 512]
-        self.mean = decoder(dim_z, arch, np.prod(dim_x), f_out=None, name='mu', **kwargs)
-        self.precision = decoder(dim_z, arch, np.prod(dim_x), f_out='softplus', name='lambda', **kwargs)
+        dim_x = np.prod(dim_x)
+        self.mean = decoder(dim_z, arch, dim_x, f_out=None, name='mean', **kwargs)
+        self.precision = decoder(dim_z, arch, dim_x, f_out='softplus', name='precision', **kwargs)
 
     def call(self, x, **kwargs):
 
-        # variational family and its KL-divergence
+        # variational family and Monte-Carlo samples
         qz_x = self.q_z(x, **kwargs)
-        dkl = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
-
-        # Monte-Carlo estimate expected log likelihood
         z_samples = qz_x.sample(sample_shape=self.num_mc_samples)
         z_samples = tf.reshape(tf.transpose(z_samples, [1, 0, 2]), [-1, self.dim_z])
+
+        # expected log likelihood
         mean = tf.reshape(self.mean(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
         precision = tf.reshape(self.precision(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
         if self.optimization == 'first-order':
@@ -134,13 +134,15 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         else:
             raise NotImplementedError
 
+        # KL divergences
+        dkl = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
+
         # negative evidence lower bound
         loss = -(ell - dkl)
 
         return loss, mean, precision
 
-    def predictive_distribution(self, *args):
-        mean, precision = self.call(args[0], training=False)[1:] if len(args) == 1 else args
+    def predictive_distribution(self, mean, precision):
         permutation = tf.concat([[0], tf.range(2, tf.rank(mean)), [1]], axis=0)
         mean = tf.transpose(mean, permutation)
         precision = tf.transpose(precision, permutation)
@@ -151,7 +153,7 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
 
     def update_metrics(self, x, mean, precision):
         p_x_x = self.predictive_distribution(mean, precision)
-        std_errors = (x - p_x_x.mean()) / p_x_x.stddev()
+        std_errors = tf.reduce_mean((x[:, None, ...] - mean) * tf.sqrt(precision), axis=1)
         prob_errors = tfpd.Normal(loc=tf.zeros_like(x), scale=tf.ones_like(x)).cdf(std_errors)
         predictor_values = pack_predictor_values(p_x_x.mean(), p_x_x.log_prob(x), prob_errors)
         self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
@@ -275,7 +277,7 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'NormalVAE':
         MODEL = NormalVAE
-    if args.model == 'GammaNormalVAE':
+    elif args.model == 'GammaNormalVAE':
         MODEL = GammaNormalVAE
     else:
         raise NotImplementedError
