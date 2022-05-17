@@ -135,10 +135,10 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
             raise NotImplementedError
 
         # KL divergences
-        dkl = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
+        dkl_z = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
 
         # negative evidence lower bound
-        loss = -(ell - dkl)
+        loss = -(ell - dkl_z)
 
         return loss, mean, precision
 
@@ -155,6 +155,61 @@ class NormalVAE(HeteroscedasticVariationalAutoencoder):
         p_x_x = self.predictive_distribution(mean, precision)
         std_errors = tf.reduce_mean((x[:, None, ...] - mean) * tf.sqrt(precision), axis=1)
         prob_errors = tfpd.Normal(loc=tf.zeros_like(x), scale=tf.ones_like(x)).cdf(std_errors)
+        predictor_values = pack_predictor_values(p_x_x.mean(), p_x_x.log_prob(x), prob_errors)
+        self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
+
+
+class StudentVAE(HeteroscedasticVariationalAutoencoder):
+
+    def __init__(self, dim_x, dim_z, decoder, min_df, **kwargs):
+        name = 'StudentVAE-DimZ-{:d}-MinDoF-{:.3f}'.format(dim_z, min_df)
+        HeteroscedasticVariationalAutoencoder.__init__(self, dim_x, dim_z, name=name, **kwargs)
+
+        # decoder networks
+        arch = [128, 256, 512]
+        dim_x = np.prod(dim_x)
+        self.mu = decoder(dim_z, arch, dim_x, f_out=None, name='mu', **kwargs)
+        self.alpha = decoder(dim_z, arch, dim_x, f_out=lambda x: min_df / 2 + tf.nn.softplus(x), name='alpha', **kwargs)
+        self.beta = decoder(dim_z, arch, dim_x, f_out='softplus', name='beta', **kwargs)
+
+    def call(self, x, **kwargs):
+
+        # variational family and Monte-Carlo samples
+        qz_x = self.q_z(x, **kwargs)
+        z_samples = qz_x.sample(sample_shape=self.num_mc_samples)
+        z_samples = tf.reshape(tf.transpose(z_samples, [1, 0, 2]), [-1, self.dim_z])
+
+        # expected log likelihood
+        mu = tf.reshape(self.mu(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        alpha = tf.reshape(self.alpha(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        beta = tf.reshape(self.beta(z_samples, **kwargs), [-1, self.num_mc_samples] + list(self.dim_x))
+        p_x_z = tfpd.Independent(tfpd.StudentT(df=2 * alpha, loc=mu, scale=tf.sqrt(beta / alpha)), tf.rank(mu) - 2)
+        ell = tf.reduce_mean(p_x_z.log_prob(x[:, None, ...]))
+
+        # KL divergences
+        dkl_z = tf.reduce_mean(qz_x.kl_divergence(self.p_z))
+
+        # negative evidence lower bound
+        loss = -(ell - dkl_z)
+
+        return loss, mu, alpha, beta
+
+    @staticmethod
+    def predictive_distribution(mu, alpha, beta):
+        permutation = tf.concat([[0], tf.range(2, tf.rank(mu)), [1]], axis=0)
+        df = tf.transpose(2 * alpha, permutation)
+        mean = tf.transpose(mu, permutation)
+        scale = tf.transpose(tf.sqrt(beta / alpha), permutation)
+        p_x_x = tfpd.MixtureSameFamily(
+            mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(mean)[-1])),
+            components_distribution=tfpd.StudentT(df=df, loc=mean, scale=scale))
+        return p_x_x
+
+    def update_metrics(self, x, mu, alpha, beta):
+        p_x_x = self.predictive_distribution(mu, alpha, beta)
+        df = tf.reduce_mean(2 * alpha, axis=1)
+        std_errors = tf.reduce_mean((x[:, None, ...] - mu) / tf.sqrt(beta / alpha), axis=1)
+        prob_errors = tfpd.StudentT(df=df, loc=tf.zeros_like(x), scale=tf.ones_like(x)).cdf(std_errors)
         predictor_values = pack_predictor_values(p_x_x.mean(), p_x_x.log_prob(x), prob_errors)
         self.compiled_metrics.update_state(y_true=x, y_pred=predictor_values)
 
@@ -277,6 +332,8 @@ if __name__ == '__main__':
     plot_title = args.model
     if args.model == 'NormalVAE':
         MODEL = NormalVAE
+    elif args.model == 'StudentVAE':
+        MODEL = StudentVAE
     elif args.model == 'GammaNormalVAE':
         MODEL = GammaNormalVAE
     else:
