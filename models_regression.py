@@ -33,7 +33,7 @@ def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_
     return nn
 
 
-class HeteroscedasticRegression(tf.keras.Model):
+class Regression(tf.keras.Model):
 
     def __init__(self, y_mean, y_var, **kwargs):
         tf.keras.Model.__init__(self, name=kwargs['name'])
@@ -91,10 +91,53 @@ class HeteroscedasticRegression(tf.keras.Model):
         return {m.name: m.result() for m in self.metrics}
 
 
-class Normal(HeteroscedasticRegression, ABC):
+class HomoscedasticNormal(Regression, ABC):
+
+    def __init__(self, dim_x, dim_y, **kwargs):
+        Regression.__init__(self, name='HomoscedasticNormal', **kwargs)
+
+        # parameter networks
+        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+
+    def call(self, x, **kwargs):
+        return tf.split(self.f_mean(x, **kwargs), num_or_size_splits=1, axis=1)
+
+    def predictive_distribution(self, *, x=None, mean=None):
+        if mean is None:
+            assert x is not None
+            mean = self.call(x, training=False)
+        mean = self.de_whiten_mean(mean)
+        stddev = self.de_whiten_precision(1.0) ** -0.5
+        return tfpd.Normal(loc=mean, scale=stddev)
+
+    def update_metrics(self, y, mean):
+        py_x = self.predictive_distribution(mean=mean)
+        prob_errors = tfpd.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
+
+    def optimization_step(self, x, y):
+
+        with tf.GradientTape() as tape:
+
+            # amortized parameter network
+            params = self.call(x, training=True)
+
+            # minimize negative log likelihood
+            py_x = tfpd.Independent(tfpd.Normal(loc=params[0], scale=1.0), reinterpreted_batch_ndims=1)
+            ll = py_x.log_prob(self.whiten_targets(y))
+            loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
+
+        # update model parameters
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+
+        return params
+
+
+class Normal(Regression, ABC):
 
     def __init__(self, dim_x, dim_y, optimization, **kwargs):
-        HeteroscedasticRegression.__init__(self, name='Normal' + '-' + optimization, **kwargs)
+        Regression.__init__(self, name='Normal' + '-' + optimization, **kwargs)
 
         # save optimization method
         self.optimization = optimization
@@ -168,10 +211,10 @@ class Normal(HeteroscedasticRegression, ABC):
         return mean, precision
 
 
-class Student(HeteroscedasticRegression):
+class Student(Regression):
 
     def __init__(self, dim_x, dim_y, **kwargs):
-        HeteroscedasticRegression.__init__(self, name='Student', **kwargs)
+        Regression.__init__(self, name='Student', **kwargs)
 
         # parameter networks
         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
@@ -212,12 +255,12 @@ class Student(HeteroscedasticRegression):
         return mu, alpha, beta
 
 
-class VariationalGammaNormal(HeteroscedasticRegression):
+class VariationalGammaNormal(Regression):
 
     def __init__(self, dim_x, dim_y, empirical_bayes, sq_err_scale=None, **kwargs):
         assert not empirical_bayes or sq_err_scale is not None
         name = 'VariationalGammaNormal' + ('-EB-{:.2f}'.format(sq_err_scale) if empirical_bayes else '')
-        HeteroscedasticRegression.__init__(self, name=name, **kwargs)
+        Regression.__init__(self, name=name, **kwargs)
 
         # precision prior
         self.empirical_bayes = empirical_bayes
@@ -382,7 +425,7 @@ if __name__ == '__main__':
 
     # evaluate predictive model
     mdl.num_mc_samples = 2000
-    p_y_x = mdl.predictive_distribution(x_eval)
+    p_y_x = mdl.predictive_distribution(x=x_eval)
     mdl_mean, mdl_std = p_y_x.mean().numpy(), p_y_x.stddev().numpy()
 
     # plot results for toy data
