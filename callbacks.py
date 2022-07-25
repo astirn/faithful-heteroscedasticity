@@ -8,7 +8,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
         super().__init__()
 
         # configure and initialize
-        self.monitor = 'val_LL'
+        self.monitor = 'val_RMSE'
         self.validation_freq = validation_freq
         self.patience = early_stop_patience
         self.nan_inf = False
@@ -23,7 +23,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
         self.nan_inf = False
         self.wait = 0
         self.stopped_epoch = 0
-        self.best = -np.inf
+        self.best = np.inf
         self.best_weights = None
 
     def on_epoch_end(self, epoch, logs=None):
@@ -37,7 +37,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
 
             # early stopping logic
             if self.patience > 0:
-                if tf.greater(logs[self.monitor], self.best):
+                if tf.less(logs[self.monitor], self.best):
                     self.best = logs[self.monitor]
                     self.wait = 0
                     self.best_weights = self.model.get_weights()
