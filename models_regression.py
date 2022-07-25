@@ -106,9 +106,7 @@ class HomoscedasticNormal(Regression, ABC):
         if mean is None:
             assert x is not None
             mean = self.call(x, training=False)
-        mean = self.de_whiten_mean(mean)
-        stddev = self.de_whiten_precision(1.0) ** -0.5
-        return tfpd.Normal(loc=mean, scale=stddev)
+        return tfpd.Normal(loc=self.de_whiten_mean(mean), scale=self.de_whiten_stddev(1.0))
 
     def update_metrics(self, y, mean):
         py_x = self.predictive_distribution(mean=mean)
@@ -117,98 +115,61 @@ class HomoscedasticNormal(Regression, ABC):
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def optimization_step(self, x, y):
-
         with tf.GradientTape() as tape:
-
-            # amortized parameter network
             params = self.call(x, training=True)
-
-            # minimize negative log likelihood
             py_x = tfpd.Independent(tfpd.Normal(loc=params[0], scale=1.0), reinterpreted_batch_ndims=1)
-            ll = py_x.log_prob(self.whiten_targets(y))
-            loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
-
-        # update model parameters
+            loss = -tf.reduce_mean(py_x.log_prob(self.whiten_targets(y)))
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-
         return params
 
 
-class Normal(Regression, ABC):
+class HeteroscedasticNormal(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, optimization, **kwargs):
-        Regression.__init__(self, name='Normal' + '-' + optimization, **kwargs)
-
-        # save optimization method
-        self.optimization = optimization
+    def __init__(self, dim_x, dim_y, **kwargs):
+        Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
 
         # parameter networks
-        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
-        self.f_precision = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='lambda', **kwargs)
+        self.f_loc = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='loc', **kwargs)
+        self.f_scale = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='scale', **kwargs)
 
     def call(self, x, **kwargs):
-        return self.f_mean(x, **kwargs), self.f_precision(x, **kwargs)
+        return self.f_loc(x, **kwargs), self.f_scale(x, **kwargs)
 
-    def predictive_distribution(self, *args):
-        mean, precision = self.call(args[0], training=False) if len(args) == 1 else args
-        mean = self.de_whiten_mean(mean)
-        stddev = self.de_whiten_precision(precision) ** -0.5
-        return tfpd.Normal(loc=mean, scale=stddev)
+    def predictive_distribution(self, *, x=None, loc=None, scale=None):
+        if loc is None or scale is None:
+            assert x is not None
+            loc, scale = self.call(x, training=False)
+        return tfpd.Normal(loc=self.de_whiten_mean(loc), scale=self.de_whiten_stddev(scale))
 
-    def update_metrics(self, y, mean, precision):
-        py_x = self.predictive_distribution(mean, precision)
+    def update_metrics(self, y, loc, scale):
+        py_x = self.predictive_distribution(loc=loc, scale=scale)
         prob_errors = tfpd.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
-    def first_order_gradients(self, x, y):
-
-        # take necessary gradients
+    def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
-            mean, precision = self.call(x, training=True)
-            py_x = tfpd.MultivariateNormalDiag(loc=mean, scale_diag=precision ** -0.5)
-            ll = py_x.log_prob(self.whiten_targets(y))
-            loss = tf.reduce_sum(tf.reduce_mean(-ll, axis=-1))
-        gradients = tape.gradient(loss, self.trainable_variables)
+            params = self.call(x, training=True)
+            py_x = tfpd.Independent(tfpd.Normal(*params), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(self.whiten_targets(y)))
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return params
 
-        return gradients, mean, precision
 
-    def second_order_gradients_mean(self, x, y):
+class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
 
-        # take necessary gradients
-        dim_batch = tf.cast(tf.shape(x)[0], tf.float32)
-        with tf.GradientTape(persistent=self.run_eagerly) as tape:
-            mean, precision = self.call(x, training=True)
-            py_x = tfpd.MultivariateNormalDiag(loc=tf.stop_gradient(mean), scale_diag=precision ** -0.5)
-            y = self.whiten_targets(y)
-            error = (y - mean)
-            loss = tf.reduce_sum(tf.reduce_mean(0.5 * tf.reduce_sum(error ** 2, axis=-1) - py_x.log_prob(y), axis=-1))
-        gradients = tape.gradient(loss, self.trainable_variables)
-
-        # if we are debugging, make sure our gradient assumptions hold
-        if self.run_eagerly:
-            dl_dm_automatic = tape.gradient(loss, mean)
-            dl_dm_expected = -error / dim_batch
-            tf.assert_less(tf.abs(dl_dm_automatic - dl_dm_expected), 1e-5)
-            dl_dp_automatic = tape.gradient(loss, precision)
-            dl_dp_expected = 0.5 * (error ** 2 - precision ** -1) / dim_batch
-            tf.assert_less(tf.abs(dl_dp_automatic - dl_dp_expected), 1e-5)
-
-        return gradients, mean, precision
+    def __init__(self, dim_x, dim_y, **kwargs):
+        HeteroscedasticNormal.__init__(self, dim_x, dim_y, name='FaithfulHeteroscedasticNormal', **kwargs)
 
     def optimization_step(self, x, y):
-
-        if self.optimization == 'first-order':
-            gradients, mean, precision = self.first_order_gradients(x, y)
-        elif self.optimization == 'second-order-mean':
-            gradients, mean, precision = self.second_order_gradients_mean(x, y)
-        else:
-            raise NotImplementedError
-
-        # update model parameters
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-        return mean, precision
+        with tf.GradientTape() as tape:
+            loc, scale = self.call(x, training=True)
+            py_loc = tfpd.Independent(tfpd.Normal(loc=loc, scale=1.0), reinterpreted_batch_ndims=1)
+            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(loc), scale=scale), reinterpreted_batch_ndims=1)
+            y = self.whiten_targets(y)
+            loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return loc, scale
 
 
 class Student(Regression):
@@ -373,8 +334,8 @@ if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action='store_true', default=False, help='sparse toy data option')
-    parser.add_argument('--model', type=str, default='Normal', help='which model to use')
+    parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
+    parser.add_argument('--model', type=str, default='HeteroscedasticNormal', help='which model to use')
     parser.add_argument('--optimization', type=str, default='first-order', help='for Normal, MC-Dropout, DeepEnsemble')
     parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Variational Gamma-Normal')
     parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Variational Gamma-Normal')
@@ -389,12 +350,12 @@ if __name__ == '__main__':
 
     # pick the appropriate model
     plot_title = args.model
-    if args.model == 'Normal':
-        MODEL = Normal
-    elif args.model == 'Student':
-        MODEL = Student
-    elif args.model == 'VariationalGammaNormal':
-        MODEL = VariationalGammaNormal
+    if args.model == 'HomoscedasticNormal':
+        MODEL = HomoscedasticNormal
+    elif args.model == 'HeteroscedasticNormal':
+        MODEL = HeteroscedasticNormal
+    elif args.model == 'FaithfulHeteroscedasticNormal':
+        MODEL = FaithfulHeteroscedasticNormal
     else:
         raise NotImplementedError
 
@@ -420,8 +381,8 @@ if __name__ == '__main__':
 
     # train model
     validation_freq = 500
-    hist = mdl.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(20e3), verbose=0,
-                   callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=6)])
+    hist = mdl.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(30e3), verbose=0,
+                   callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
     mdl.num_mc_samples = 2000
