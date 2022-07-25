@@ -13,7 +13,11 @@ for dataset in REGRESSION_DATA.keys():
     results_file = os.path.join('experiments', 'regression', dataset, 'results.pkl')
     if os.path.exists(results_file):
         df_results = pd.read_pickle(results_file)
-        df_results = df_results[df_results.Model.isin({'Normal-first-order', 'Normal-second-order-mean', 'VariationalGammaNormal-EB-0.80'})]
+        df_results = df_results[df_results.Model.isin({
+            'HomoscedasticNormal',
+            'HeteroscedasticNormal',
+            'FaithfulHeteroscedasticNormal',
+        })]
         results.update({dataset: df_results})
 
 # make latex tables

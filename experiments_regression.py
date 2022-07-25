@@ -2,6 +2,7 @@ import argparse
 import os
 import pickle
 
+import models_regression as models
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -9,7 +10,6 @@ import tensorflow as tf
 from callbacks import RegressionCallback
 from data_regression import create_or_load_fold
 from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
-from models_regression import Normal, Student, VariationalGammaNormal
 from sklearn import preprocessing
 
 # script arguments
@@ -30,13 +30,14 @@ os.makedirs(exp_path, exist_ok=True)
 # models and configurations to run
 nn_kwargs = {'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}
 models_and_configs = [
-    {'model': Normal, 'config': {'optimization': 'first-order'}},
-    {'model': Normal, 'config': {'optimization': 'second-order-mean'}},
-    {'model': Student, 'config': {'optimization': 'second-order-mean'}},
-    {'model': VariationalGammaNormal, 'config': {'empirical_bayes': False}},
-    {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.6}},
-    {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.8}},
-    {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 1.0}},
+    {'model': models.HomoscedasticNormal, 'config': dict()},
+    {'model': models.HeteroscedasticNormal, 'config': dict()},
+    {'model': models.FaithfulHeteroscedasticNormal, 'config': dict()},
+    # {'model': Student, 'config': {'optimization': 'second-order-mean'}},
+    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': False}},
+    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.6}},
+    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.8}},
+    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 1.0}},
 ]
 
 # create or load folds
