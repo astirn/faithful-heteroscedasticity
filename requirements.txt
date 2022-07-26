@@ -1,7 +1,7 @@
 matplotlib==3.5.1
 pandas==1.4.2
 seaborn==0.11.2
-sklearn==1.0.2
+sklearn
 tensorflow-datasets==4.5.2
 tensorflow-probability==0.16.0
 xlrd==2.0.1

@@ -1,18 +1,13 @@
 import argparse
-
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
-import tensorflow_probability as tfp
-
 from abc import ABC
-from matplotlib import pyplot as plt
-from tensorflow_probability import distributions as tfpd
-
 from callbacks import RegressionCallback
-from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
 from data_regression import generate_toy_data
-
+from matplotlib import pyplot as plt
+from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
+from tensorflow_probability import distributions as tfpd
 
 # configure GPUs
 for gpu in tf.config.list_physical_devices('GPU'):
