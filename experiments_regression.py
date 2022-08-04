@@ -31,14 +31,9 @@ os.makedirs(exp_path, exist_ok=True)
 # models and configurations to run
 nn_kwargs = {'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}
 models_and_configs = [
-    {'model': models.HomoscedasticNormal, 'config': dict()},
+    {'model': models.UnitVarianceNormal, 'config': dict()},
     {'model': models.HeteroscedasticNormal, 'config': dict()},
     {'model': models.FaithfulHeteroscedasticNormal, 'config': dict()},
-    # {'model': Student, 'config': {'optimization': 'second-order-mean'}},
-    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': False}},
-    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.6}},
-    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 0.8}},
-    # {'model': VariationalGammaNormal, 'config': {'empirical_bayes': True, 'sq_err_scale': 1.0}},
 ]
 
 # create or load folds
@@ -46,7 +41,7 @@ np.random.seed(args.split_seed)
 data = create_or_load_fold(args.dataset, args.num_folds, exp_path)
 
 # loop over folds
-results = pd.DataFrame()
+metrics = pd.DataFrame()
 predictions = pd.DataFrame()
 for fold in np.unique(data['split']):
     fold_path = os.path.join(exp_path, 'fold_' + str(fold))
@@ -64,6 +59,10 @@ for fold in np.unique(data['split']):
         x_train = tf.constant(x_scale.transform(x_train))
         x_valid = tf.constant(x_scale.transform(x_valid))
 
+        # target and parameter normalization object
+        z_normalization = ZScoreNormalization(y_mean=tf.reduce_mean(y_train, axis=0),
+                                              y_var=tf.math.reduce_variance(y_train, axis=0))
+
         # loop over the models and configurations
         for model_and_config in models_and_configs:
             print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
@@ -75,8 +74,6 @@ for fold in np.unique(data['split']):
             model = model_and_config['model'](
                 dim_x=x_train.shape[1],
                 dim_y=y_train.shape[1],
-                y_mean=tf.reduce_mean(y_train, axis=0),
-                y_var=tf.math.reduce_variance(y_train, axis=0),
                 **model_and_config['config'], **nn_kwargs
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
@@ -92,16 +89,17 @@ for fold in np.unique(data['split']):
             # if we are set to resume and the model directory already contains a saved model, load it
             if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
                 print(model.name + ' exists. Loading...')
-                model.load_weights(os.path.join(model_dir, 'best_checkpoint'))
+                checkpoint = tf.train.Checkpoint(model)
+                checkpoint.restore(os.path.join(model_dir, 'best_checkpoint')).expect_partial()
                 with open(os.path.join(model_dir, 'hist.pkl'), 'rb') as f:
                     history = pickle.load(f)
 
             # otherwise, train and save the model
             else:
                 valid_freq = 100
-                hist = model.fit(x=x_train, y=y_train,
-                                 validation_data=(x_valid, y_valid), validation_freq=valid_freq,
-                                 batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
+                hist = model.fit(x=x_train, y=z_normalization.normalize_targets(y_train),
+                                 validation_data=(x_valid, z_normalization.normalize_targets(y_valid)),
+                                 validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
                                  callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
                 model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
                 history = hist.history
@@ -109,15 +107,26 @@ for fold in np.unique(data['split']):
                     pickle.dump(history, f)
 
             # test model
-            test_metrics = model.evaluate(x=x_valid, y=y_valid, verbose=0)
+            test_metrics = model.evaluate(x=x_valid, y=z_normalization.normalize_targets(y_valid), verbose=0)
             print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
 
             # update results table
-            new_results = pd.DataFrame(
+            new_metrics = pd.DataFrame(
                 data={'Model': model.name, 'Architecture': str(nn_kwargs), 'Epochs': len(history['LL']),
                       'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
                 index=pd.MultiIndex.from_arrays([[fold], [trial]], names=['fold', 'trial']))
-            results = pd.concat([results, new_results])
+            metrics = pd.concat([metrics, new_metrics])
 
-# save the results
-results.to_pickle(os.path.join(exp_path, 'results.pkl'))
+            # save predictions
+            tap = model.predict(x=x_valid, verbose=0)
+            tap.update({'y': y_valid})
+            df = pd.DataFrame()
+            for key, value in tap.items():
+                for dim in range(value.shape[1]):
+                    df[key + '_' + str(dim)] = z_normalization.scale_parameters(key, value[:, dim])
+            index = pd.MultiIndex.from_arrays([[model.name], [str(nn_kwargs)]], names=['Model', 'Architecture'])
+            predictions = pd.concat([predictions, df.set_index(index.repeat(len(df)))])
+
+# save metrics and predictions
+metrics.to_pickle(os.path.join(exp_path, 'metrics.pkl'))
+predictions.to_pickle(os.path.join(exp_path, 'predictions.pkl'))
