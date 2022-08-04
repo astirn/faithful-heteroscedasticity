@@ -110,9 +110,12 @@ for fold in np.unique(data['split']):
             test_metrics = model.evaluate(x=x_valid, y=z_normalization.normalize_targets(y_valid), verbose=0)
             print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
 
+            # model name for tables
+            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+
             # update results table
             new_metrics = pd.DataFrame(
-                data={'Model': model.name, 'Architecture': str(nn_kwargs), 'Epochs': len(history['LL']),
+                data={'Model': model_name, 'Architecture': str(nn_kwargs), 'Epochs': len(history['LL']),
                       'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
                 index=pd.MultiIndex.from_arrays([[fold], [trial]], names=['fold', 'trial']))
             metrics = pd.concat([metrics, new_metrics])
@@ -122,9 +125,10 @@ for fold in np.unique(data['split']):
             tap.update({'y': y_valid})
             df = pd.DataFrame()
             for key, value in tap.items():
+                value = z_normalization.scale_parameters(key, value)
                 for dim in range(value.shape[1]):
-                    df[key + '_' + str(dim)] = z_normalization.scale_parameters(key, value[:, dim])
-            index = pd.MultiIndex.from_arrays([[model.name], [str(nn_kwargs)]], names=['Model', 'Architecture'])
+                    df[key + '_' + str(dim)] = value[:, dim]
+            index = pd.MultiIndex.from_arrays([[model_name], [str(nn_kwargs)]], names=['Model', 'Architecture'])
             predictions = pd.concat([predictions, df.set_index(index.repeat(len(df)))])
 
 # save metrics and predictions

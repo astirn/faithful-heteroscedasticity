@@ -323,8 +323,8 @@ if __name__ == '__main__':
 
     # pick the appropriate model
     plot_title = args.model
-    if args.model == 'HomoscedasticNormal':
-        MODEL = HomoscedasticNormal
+    if args.model == 'UnitVarianceNormal':
+        MODEL = UnitVarianceNormal
     elif args.model == 'HeteroscedasticNormal':
         MODEL = HeteroscedasticNormal
     elif args.model == 'FaithfulHeteroscedasticNormal':
