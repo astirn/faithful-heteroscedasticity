@@ -1,36 +1,65 @@
 import os
-
+import numpy as np
 import pandas as pd
-
-from data_regression import REGRESSION_DATA
-from utils import build_table, champions_club_table
-
-if not os.path.exists('tables'):
-    os.mkdir('tables')
-
-results = dict()
-for dataset in REGRESSION_DATA.keys():
-    results_file = os.path.join('experiments', 'regression', dataset, 'results.pkl')
-    if os.path.exists(results_file):
-        df_results = pd.read_pickle(results_file)
-        df_results = df_results[df_results.Model.isin({
-            'HomoscedasticNormal',
-            'HeteroscedasticNormal',
-            'FaithfulHeteroscedasticNormal',
-        })]
-        results.update({dataset: df_results})
-
-# make latex tables
-max_cols = 5
-champions_club = []
-for metric in ['LL', 'RMSE', 'ECE']:
-    order = 'max' if metric == 'LL' else 'min'
-    with open(os.path.join('tables', 'regression_uci_' + metric.lower().replace(' ', '_') + '.tex'), 'w') as f:
-        table, cc = build_table(results, metric, order, max_cols, bold_statistical_ties=True)
-        print(table.replace('NaN', '--'), file=f)
-    champions_club.append(cc)
+from scipy.stats import ks_2samp, ttest_ind, mannwhitneyu
 
 
-# print champions club
-with open(os.path.join('tables', 'regression_uci_champions_club.tex'), 'w') as f:
-    print(champions_club_table(champions_club), file=f)
+def get_target_dimension(df):
+    return len([col for col in df.columns if col[:2] == 'y_'])
+
+
+def get_squared_errors(df, idx):
+    df = df.loc[idx]
+    sq_errors = np.zeros(len(df))
+    for i in range(get_target_dimension(df)):
+        sq_errors += (df['y_' + str(i)] - df['mean_' + str(i)]) ** 2
+    return sq_errors
+
+
+def print_uci_table(df):
+
+    test = df.melt(id_vars=['Dataset'], value_vars=['MSE', 'p-value'], ignore_index=False)
+    test = test.reset_index()
+    del test['Architecture']
+    test = test.pivot(index='Dataset', columns=['Model', 'variable'], values='value')
+    test = test[['UnitVarianceNormal', 'HeteroscedasticNormal', 'FaithfulHeteroscedasticNormal']]
+    test.style.hide(axis=1, names=True).format("{:.3g}".format).to_latex(
+        buf=os.path.join('tables', 'regression_uci_mse.tex'),
+        hrules=True,
+    )
+
+
+def generate_uci_tables():
+
+    # loop over datasets with predictions
+    df_mse = pd.DataFrame()
+    for dataset in os.listdir(os.path.join('experiments', 'regression')):
+        predictions_file = os.path.join('experiments', 'regression', dataset, 'predictions.pkl')
+        if os.path.exists(predictions_file):
+            df_predictions = pd.read_pickle(predictions_file).sort_index()
+
+            # MSE
+            null_index = pd.MultiIndex.from_tuples(
+                tuples=[('UnitVarianceNormal', "{'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}")],
+                names=df_predictions.index.names)
+            null_squared_errors = get_squared_errors(df_predictions, null_index)
+            for index in df_predictions.index.unique():
+                index = pd.MultiIndex.from_tuples(tuples=[index], names=df_predictions.index.names)
+                squared_errors = get_squared_errors(df_predictions, index)
+                # p_value = ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
+                p_value = mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
+                df_mse = pd.concat([df_mse, pd.DataFrame({'Dataset': dataset,
+                                                          'MSE': squared_errors.mean(),
+                                                          'p-value': p_value}, index)])
+
+    print_uci_table(df_mse)
+
+
+if __name__ == '__main__':
+
+    # output directory
+    if not os.path.exists('tables'):
+        os.mkdir('tables')
+
+    # UCI tables
+    generate_uci_tables()
