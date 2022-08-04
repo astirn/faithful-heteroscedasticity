@@ -63,10 +63,10 @@ class Regression(tf.keras.Model):
         return {m.name: m.result() for m in self.metrics}
 
 
-class HomoscedasticNormal(Regression, ABC):
+class UnitVarianceNormal(Regression, ABC):
 
     def __init__(self, dim_x, dim_y, **kwargs):
-        Regression.__init__(self, name='HomoscedasticNormal', **kwargs)
+        Regression.__init__(self, name='UnitVarianceNormal', **kwargs)
 
         # parameter networks
         self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
