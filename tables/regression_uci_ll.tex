@@ -1,42 +1,10 @@
-\begin{tabular}{llllll}
+\begin{tabular}{llll}
 \toprule
-{} &                            boston &                            carbon &                          concrete &                           energy &                             naval \\
-Model& (506, 13, 1)& (10721, 5, 3)& (1030, 8, 1)& (768, 8, 2)& (11934, 16, 2)\\
+{} &                            boston &                          concrete &                            energy \\
+Model& (506, 13, 1)& (1030, 8, 1)& (768, 8, 2)\\
 \midrule
-Normal-first-order             &           \textbf{-2.48$\pm$0.19} &                    12.44$\pm$1.26 &           \textbf{-3.00$\pm$0.14} &  \textbf{\textbf{0.95$\pm$0.27}} &           \textbf{14.66$\pm$0.40} \\
-Normal-second-order-mean       &           \textbf{-2.54$\pm$0.18} &                    12.22$\pm$1.37 &                    -3.05$\pm$0.13 &                   -0.58$\pm$0.16 &  \textbf{\textbf{15.16$\pm$0.16}} \\
-Student                        &           \textbf{-2.49$\pm$0.23} &  \textbf{\textbf{16.24$\pm$0.32}} &           \textbf{-3.00$\pm$0.15} &           \textbf{0.69$\pm$0.32} &                    13.80$\pm$0.46 \\
-VariationalGammaNormal         &                    -2.87$\pm$0.03 &                  2.18$\pm$1.9e-03 &                    -3.41$\pm$0.03 &                   -5.62$\pm$0.01 &                  8.08$\pm$4.2e-03 \\
-VariationalGammaNormal-EB-0.60 &           \textbf{-2.40$\pm$0.12} &                    13.27$\pm$0.14 &  \textbf{\textbf{-2.73$\pm$0.20}} &                   -0.77$\pm$0.12 &                    10.83$\pm$0.54 \\
-VariationalGammaNormal-EB-0.80 &  \textbf{\textbf{-2.39$\pm$0.12}} &                    13.43$\pm$0.13 &           \textbf{-2.77$\pm$0.19} &                   -0.51$\pm$0.19 &                    10.83$\pm$0.81 \\
-VariationalGammaNormal-EB-1.00 &           \textbf{-2.40$\pm$0.13} &                    13.71$\pm$0.23 &           \textbf{-2.82$\pm$0.20} &                   -0.52$\pm$0.19 &                    10.87$\pm$0.42 \\
-VariationalGammaNormal-EB-T    &           \textbf{-2.40$\pm$0.14} &                    13.73$\pm$0.21 &           \textbf{-2.79$\pm$0.17} &                   -0.32$\pm$0.18 &                    11.10$\pm$0.97 \\
-\midrule
-{} &                       power plant &                           protein &                 superconductivity &                          wine-red &                        wine-white \\
-Model& (9568, 4, 1)& (45730, 9, 1)& (21263, 81, 1)& (1599, 11, 1)& (4898, 11, 1)\\
-\midrule
-Normal-first-order             &           \textbf{-2.75$\pm$0.07} &  \textbf{\textbf{-4.06$\pm$0.14}} &           \textbf{-3.50$\pm$0.10} &           \textbf{-0.94$\pm$0.09} &           \textbf{-1.05$\pm$0.05} \\
-Normal-second-order-mean       &           \textbf{-2.75$\pm$0.08} &           \textbf{-4.07$\pm$0.10} &                    -3.57$\pm$0.06 &           \textbf{-0.94$\pm$0.08} &           \textbf{-1.05$\pm$0.05} \\
-Student                        &           \textbf{-2.70$\pm$0.02} &                    -4.51$\pm$0.18 &  \textbf{\textbf{-3.42$\pm$0.05}} &  \textbf{\textbf{-0.86$\pm$0.13}} &           \textbf{-1.05$\pm$0.05} \\
-VariationalGammaNormal         &                 -3.43$\pm$5.6e-03 &                 -8.82$\pm$1.4e-03 &                 -4.19$\pm$7.1e-03 &           \textbf{-0.95$\pm$0.08} &           \textbf{-1.05$\pm$0.04} \\
-VariationalGammaNormal-EB-0.60 &           \textbf{-2.70$\pm$0.02} &                    -4.55$\pm$0.13 &                    -3.64$\pm$0.03 &           \textbf{-0.94$\pm$0.09} &           \textbf{-1.05$\pm$0.04} \\
-VariationalGammaNormal-EB-0.80 &  \textbf{\textbf{-2.68$\pm$0.03}} &                    -4.46$\pm$0.05 &                    -3.60$\pm$0.03 &           \textbf{-0.94$\pm$0.09} &  \textbf{\textbf{-1.04$\pm$0.04}} \\
-VariationalGammaNormal-EB-1.00 &           \textbf{-2.69$\pm$0.03} &                    -4.47$\pm$0.12 &                    -3.58$\pm$0.03 &           \textbf{-0.95$\pm$0.10} &           \textbf{-1.05$\pm$0.05} \\
-VariationalGammaNormal-EB-T    &           \textbf{-2.70$\pm$0.03} &                    -4.40$\pm$0.09 &                    -3.57$\pm$0.02 &           \textbf{-0.95$\pm$0.10} &           \textbf{-1.05$\pm$0.05} \\
-\bottomrule
-\end{tabular}
-\midrule
-{} &                             yacht \\
-Model& (308, 6, 1)\\
-\midrule
-Normal-first-order             &           \textbf{-0.54$\pm$0.45} \\
-Normal-second-order-mean       &           \textbf{-0.44$\pm$0.57} \\
-Student                        &           \textbf{-0.39$\pm$0.46} \\
-VariationalGammaNormal         &                    -3.23$\pm$0.02 \\
-VariationalGammaNormal-EB-0.60 &           \textbf{-0.13$\pm$0.34} \\
-VariationalGammaNormal-EB-0.80 &           \textbf{-0.10$\pm$0.36} \\
-VariationalGammaNormal-EB-1.00 &           \textbf{-0.05$\pm$0.32} \\
-VariationalGammaNormal-EB-T    &  \textbf{\textbf{-0.01$\pm$0.31}} \\
+HeteroscedasticNormal &           \textbf{-4.03$\pm$1.50} &           \textbf{-5.47$\pm$2.45} &  \textbf{\textbf{-0.80$\pm$0.53}} \\
+HomoscedasticNormal   &  \textbf{\textbf{-3.19$\pm$0.02}} &  \textbf{\textbf{-3.77$\pm$0.01}} &                 -6.41$\pm$6.1e-03 \\
 \bottomrule
 \end{tabular}
 
