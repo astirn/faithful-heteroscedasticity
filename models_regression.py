@@ -30,31 +30,8 @@ def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_
 
 class Regression(tf.keras.Model):
 
-    def __init__(self, y_mean, y_var, **kwargs):
+    def __init__(self, **kwargs):
         tf.keras.Model.__init__(self, name=kwargs['name'])
-
-        # save target scaling
-        self.y_mean = tf.constant(y_mean, dtype=tf.float32)
-        self.y_var = tf.constant(y_var, dtype=tf.float32)
-        self.y_std = tf.sqrt(self.y_var)
-
-    def whiten_targets(self, y):
-        return (y - self.y_mean) / self.y_std
-
-    def de_whiten_mean(self, mu):
-        return mu * self.y_std + self.y_mean
-
-    def de_whiten_stddev(self, sigma):
-        return sigma * self.y_std
-
-    def de_whiten_variance(self, variance):
-        return variance * self.y_var
-
-    def de_whiten_precision(self, precision):
-        return precision / self.y_var
-
-    def de_whiten_log_precision(self, log_precision):
-        return log_precision - tf.math.log(self.y_var)
 
     @staticmethod
     def parse_keras_inputs(data):
@@ -73,7 +50,7 @@ class Regression(tf.keras.Model):
         params = self.optimization_step(x, y)
 
         # update metrics
-        self.update_metrics(y, *params)
+        self.update_metrics(y, **params)
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -81,7 +58,7 @@ class Regression(tf.keras.Model):
         x, y = self.parse_keras_inputs(data)
 
         # update metrics
-        self.update_metrics(y, *self.call(x, training=True))
+        self.update_metrics(y, **self.call(x, training=True))
 
         return {m.name: m.result() for m in self.metrics}
 
@@ -92,16 +69,16 @@ class HomoscedasticNormal(Regression, ABC):
         Regression.__init__(self, name='HomoscedasticNormal', **kwargs)
 
         # parameter networks
-        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
-        return tf.split(self.f_mean(x, **kwargs), num_or_size_splits=1, axis=1)
+        return {'mean': self.f_mean(x, **kwargs)}
 
     def predictive_distribution(self, *, x=None, mean=None):
         if mean is None:
             assert x is not None
-            mean = self.call(x, training=False)
-        return tfpd.Normal(loc=self.de_whiten_mean(mean), scale=self.de_whiten_stddev(1.0))
+            mean, = self.call(x, training=False).values()
+        return tfpd.Normal(loc=mean, scale=1.0)
 
     def update_metrics(self, y, mean):
         py_x = self.predictive_distribution(mean=mean)
@@ -112,8 +89,8 @@ class HomoscedasticNormal(Regression, ABC):
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.Normal(loc=params[0], scale=1.0), reinterpreted_batch_ndims=1)
-            loss = -tf.reduce_mean(py_x.log_prob(self.whiten_targets(y)))
+            py_x = tfpd.Independent(tfpd.Normal(loc=params['mean'], scale=1.0), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(y))
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
 
@@ -124,20 +101,20 @@ class HeteroscedasticNormal(Regression, ABC):
         Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
 
         # parameter networks
-        self.f_loc = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='loc', **kwargs)
-        self.f_scale = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='scale', **kwargs)
+        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        self.f_scale = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
-        return self.f_loc(x, **kwargs), self.f_scale(x, **kwargs)
+        return {'mean': self.f_mean(x, **kwargs), 'std': self.f_scale(x, **kwargs)}
 
-    def predictive_distribution(self, *, x=None, loc=None, scale=None):
-        if loc is None or scale is None:
+    def predictive_distribution(self, *, x=None, mean=None, std=None):
+        if mean is None or std is None:
             assert x is not None
-            loc, scale = self.call(x, training=False)
-        return tfpd.Normal(loc=self.de_whiten_mean(loc), scale=self.de_whiten_stddev(scale))
+            mean, std = self.call(x, training=False).values()
+        return tfpd.Normal(loc=mean, scale=std)
 
-    def update_metrics(self, y, loc, scale):
-        py_x = self.predictive_distribution(loc=loc, scale=scale)
+    def update_metrics(self, y, mean, std):
+        py_x = self.predictive_distribution(mean=mean, std=std)
         prob_errors = tfpd.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
@@ -145,8 +122,8 @@ class HeteroscedasticNormal(Regression, ABC):
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.Normal(*params), reinterpreted_batch_ndims=1)
-            loss = -tf.reduce_mean(py_x.log_prob(self.whiten_targets(y)))
+            py_x = tfpd.Independent(tfpd.Normal(*params.values()), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(y))
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
 
@@ -158,13 +135,14 @@ class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
-            loc, scale = self.call(x, training=True)
-            py_loc = tfpd.Independent(tfpd.Normal(loc=loc, scale=1.0), reinterpreted_batch_ndims=1)
-            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(loc), scale=scale), reinterpreted_batch_ndims=1)
-            y = self.whiten_targets(y)
+            params = self.call(x, training=True)
+            py_loc = tfpd.Independent(tfpd.Normal(loc=params['mean'], scale=1.0),
+                                      reinterpreted_batch_ndims=1)
+            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(params['mean']), scale=params['std']),
+                                      reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return loc, scale
+        return params
 
 
 class Student(Regression):
@@ -358,8 +336,6 @@ if __name__ == '__main__':
     mdl = MODEL(
         dim_x=x_train.shape[1],
         dim_y=y_train.shape[1],
-        y_mean=tf.constant([y_train.mean()], dtype=tf.float32),
-        y_var=tf.constant([y_train.var()], dtype=tf.float32),
         optimization=args.optimization,  # for Normal
         num_mc_samples=20,  # for MC-Dropout
         empirical_bayes=args.empirical_bayes,  # for Variational Gamma-Normal

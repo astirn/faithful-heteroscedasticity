@@ -11,6 +11,7 @@ from callbacks import RegressionCallback
 from data_regression import create_or_load_fold
 from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
 from sklearn import preprocessing
+from utils import ZScoreNormalization
 
 # script arguments
 parser = argparse.ArgumentParser()
@@ -46,6 +47,7 @@ data = create_or_load_fold(args.dataset, args.num_folds, exp_path)
 
 # loop over folds
 results = pd.DataFrame()
+predictions = pd.DataFrame()
 for fold in np.unique(data['split']):
     fold_path = os.path.join(exp_path, 'fold_' + str(fold))
 
