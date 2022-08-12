@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-from scipy.stats import ks_2samp, ttest_ind, mannwhitneyu
+import scipy.stats as stats
 
 
 def get_target_dimension(df):
@@ -16,16 +16,64 @@ def get_squared_errors(df, idx):
     return sq_errors
 
 
-def print_uci_table(df):
+def get_targets_and_predictions(df, idx):
+    df = df.loc[idx]
+    y = np.empty(len(df) * get_target_dimension(df))
+    y_hat = np.empty(len(df) * get_target_dimension(df))
+    for i in range(get_target_dimension(df)):
+        y[i * len(df) : (i + 1) * len(df)] = df['y_' + str(i)]
+        y_hat[i * len(df) : (i + 1) * len(df)] = df['mean_' + str(i)]
+    return y, y_hat
 
-    test = df.melt(id_vars=['Dataset'], value_vars=['MSE', 'p-value'], ignore_index=False)
-    test = test.reset_index()
-    del test['Architecture']
-    test = test.pivot(index='Dataset', columns=['Model', 'variable'], values='value')
-    test = test[['UnitVarianceNormal', 'HeteroscedasticNormal', 'FaithfulHeteroscedasticNormal']]
-    test.style.hide(axis=1, names=True).format("{:.3g}".format).to_latex(
-        buf=os.path.join('tables', 'regression_uci_mse.tex'),
+
+def steigers_test(y, y_hat_1, y_hat_2):
+    r1 = stats.pearsonr(y, y_hat_1)[0]
+    r2 = stats.pearsonr(y, y_hat_2)[0]
+    r12 = stats.pearsonr(y_hat_1, y_hat_2)[0]
+
+    # Steiger's test
+    n = len(y)
+    z1 = 0.5 * (np.log(1 + r1) - np.log(1 - r1))
+    z2 = 0.5 * (np.log(1 + r2) - np.log(1 - r2))
+    rm2 = (r1 ** 2 + r2 ** 2) / 2
+    f = (1 - r12) / 2 / (1 - rm2)
+    h = (1 - f * rm2) / (1 - rm2)
+    z = abs(z1 - z2) * ((n - 3) / (2 * (1 - r12) * h)) ** 0.5
+    log10_p = (stats.norm.logcdf(-z) + np.log(2)) / np.log10(np.e)
+
+    return r1, r2, log10_p
+
+# def get_error_probs(df, idx):
+#     df = df.loc[idx]
+#     s_errors = np.zeros(len(df))
+#     for i in range(get_target_dimension(df)):
+#         sq_errors += (df['y_' + str(i)] - df['mean_' + str(i)]) ** 2
+#     sq_errors = sq_errors
+#     return sq_errors
+
+
+def print_uci_table(df, file_name):
+
+    # get column names
+    if isinstance(df.index, pd.Index):
+        columns = df.index.name
+    elif isinstance(df.index, pd.MultiIndex):
+        columns = df.index.names
+    else:
+        raise NotImplementedError
+
+    # rearrange table for LaTeX
+    df_latex = df.melt(id_vars=['Dataset'], value_vars=df.columns[1:], ignore_index=False)
+    df_latex = df_latex.reset_index()
+    df_latex = df_latex.pivot(index='Dataset', columns=columns + ['variable'], values='value')
+    df_latex = pd.concat([df_latex[('Unit Variance Normal', 'MSE')],
+                          df_latex[['Heteroscedastic Normal']],
+                          df_latex[['Faithful Heteroscedastic Normal']]], axis=1)
+    df_latex.style.hide(axis=1, names=True).to_latex(
+        buf=os.path.join('tables', file_name),
+        column_format='l' + ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)]),
         hrules=True,
+        # multicol_align='p{2cm}'
     )
 
 
@@ -33,26 +81,51 @@ def generate_uci_tables():
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
+    df_pearson = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'regression')):
-        predictions_file = os.path.join('experiments', 'regression', dataset, 'predictions.pkl')
+        predictions_file = os.path.join('experiments', 'regression', dataset, 'predictions_normalized.pkl')
         if os.path.exists(predictions_file):
             df_predictions = pd.read_pickle(predictions_file).sort_index()
 
-            # MSE
-            null_index = pd.MultiIndex.from_tuples(
-                tuples=[('UnitVarianceNormal', "{'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}")],
-                names=df_predictions.index.names)
-            null_squared_errors = get_squared_errors(df_predictions, null_index)
-            for index in df_predictions.index.unique():
-                index = pd.MultiIndex.from_tuples(tuples=[index], names=df_predictions.index.names)
-                squared_errors = get_squared_errors(df_predictions, index)
-                # p_value = ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
-                p_value = mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
-                df_mse = pd.concat([df_mse, pd.DataFrame({'Dataset': dataset,
-                                                          'MSE': squared_errors.mean(),
-                                                          'p-value': p_value}, index)])
+            # drop index levels with just one unique value
+            for level in df_predictions.index.names:
+                if len(df_predictions.index.unique(level)) == 1:
+                    df_predictions.set_index(df_predictions.index.droplevel(level), inplace=True)
 
-    print_uci_table(df_mse)
+            # null hypothesis values
+            null_index = ['Unit Variance Normal']
+            null_squared_errors = get_squared_errors(df_predictions, null_index)
+            # y_null, y_hat_null = get_targets_and_predictions(df_predictions, null_index)
+
+            # loop over alternatives
+            for index in df_predictions.index.unique():
+                if isinstance(index, tuple):
+                    index = pd.MultiIndex.from_tuples(tuples=[index], names=df_predictions.index.names)
+                else:
+                    index = pd.Index(data=[index], name=df_predictions.index.names)
+
+                # MSE
+                squared_errors = get_squared_errors(df_predictions, index)
+                mse = '{:.2g}'.format(squared_errors.mean())
+                p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
+                # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
+                p = '$H_0' if list(index) == null_index else '{:.2g}'.format(p)
+                df_mse_add = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
+                df_mse = pd.concat([df_mse, df_mse_add])
+
+                # # Pearson
+                # y, y_hat = get_targets_and_predictions(df_predictions, index)
+                # assert np.min(np.abs(y - y_null)) == 0
+                # _, r, log10_p = steigers_test(y, y_hat_null, y_hat)
+                # df_pearson = pd.concat([df_pearson, pd.DataFrame({'Dataset': dataset,
+                #                                                   'Pearson': r,
+                #                                                   '$\\log_{10}(p)$': log10_p}, index)])
+
+            # # ECE
+            # ece = ExpectedCalibrationError(num_bins=6)
+
+    print_uci_table(df_mse, file_name='regression_uci_mse.tex')
+    # print_uci_table(df_pearson, file_name='regression_uci_pearson.tex')
 
 
 if __name__ == '__main__':
