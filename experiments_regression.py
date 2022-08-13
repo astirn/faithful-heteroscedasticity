@@ -41,8 +41,7 @@ np.random.seed(args.split_seed)
 data = create_or_load_fold(args.dataset, args.num_folds, exp_path)
 
 # loop over folds
-metrics = pd.DataFrame()
-predictions = pd.DataFrame()
+measurements = pd.DataFrame()
 for fold in np.unique(data['split']):
     fold_path = os.path.join(exp_path, 'fold_' + str(fold))
 
@@ -117,16 +116,15 @@ for fold in np.unique(data['split']):
             index.update(model_and_config['config'])
             index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
 
-            # save predictions
-            tap = model.predict(x=x_valid, verbose=0)
-            tap.update({'y': y_valid})
-            df = pd.DataFrame()
-            for key, value in tap.items():
-                value = z_normalization.scale_parameters(key, value)
-                for dim in range(value.shape[1]):
-                    df[key + '_' + str(dim)] = value[:, dim]
-            predictions = pd.concat([predictions, df.set_index(index.repeat(len(df)))])
+            # save local performance measurements
+            y_valid_norm = z_normalization.normalize_targets(y_valid)
+            params = model.predict(x=x_valid, verbose=0)
+            squared_errors = tf.reduce_sum((y_valid_norm - params['mean']) ** 2, axis=-1)
+            cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y_valid_norm), axis=-1)
+            measurements = pd.concat([measurements, pd.DataFrame({
+                'squared_errors': squared_errors,
+                'cdf_y': cdf_y,
+            }, index.repeat(len(y_valid)))])
 
-# save metrics and predictions
-metrics.to_pickle(os.path.join(exp_path, 'metrics.pkl'))
-predictions.to_pickle(os.path.join(exp_path, 'predictions.pkl'))
+# save performance measures
+measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))

@@ -8,24 +8,6 @@ def get_target_dimension(df):
     return len([col for col in df.columns if col[:2] == 'y_'])
 
 
-def get_squared_errors(df, idx):
-    df = df.loc[idx]
-    sq_errors = np.zeros(len(df))
-    for i in range(get_target_dimension(df)):
-        sq_errors += (df['y_' + str(i)] - df['mean_' + str(i)]) ** 2
-    return sq_errors
-
-
-def get_targets_and_predictions(df, idx):
-    df = df.loc[idx]
-    y = np.empty(len(df) * get_target_dimension(df))
-    y_hat = np.empty(len(df) * get_target_dimension(df))
-    for i in range(get_target_dimension(df)):
-        y[i * len(df) : (i + 1) * len(df)] = df['y_' + str(i)]
-        y_hat[i * len(df) : (i + 1) * len(df)] = df['mean_' + str(i)]
-    return y, y_hat
-
-
 def steigers_test(y, y_hat_1, y_hat_2):
     r1 = stats.pearsonr(y, y_hat_1)[0]
     r2 = stats.pearsonr(y, y_hat_2)[0]
@@ -42,14 +24,6 @@ def steigers_test(y, y_hat_1, y_hat_2):
     log10_p = (stats.norm.logcdf(-z) + np.log(2)) / np.log10(np.e)
 
     return r1, r2, log10_p
-
-# def get_error_probs(df, idx):
-#     df = df.loc[idx]
-#     s_errors = np.zeros(len(df))
-#     for i in range(get_target_dimension(df)):
-#         sq_errors += (df['y_' + str(i)] - df['mean_' + str(i)]) ** 2
-#     sq_errors = sq_errors
-#     return sq_errors
 
 
 def print_uci_table(df, file_name):
@@ -81,37 +55,39 @@ def generate_uci_tables():
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
-    df_pearson = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'regression')):
-        predictions_file = os.path.join('experiments', 'regression', dataset, 'predictions_normalized.pkl')
-        if os.path.exists(predictions_file):
-            df_predictions = pd.read_pickle(predictions_file).sort_index()
+        measurements_file = os.path.join('experiments', 'regression', dataset, 'measurements.pkl')
+        if os.path.exists(measurements_file):
+            df_measurements = pd.read_pickle(measurements_file).sort_index()
 
             # drop index levels with just one unique value
-            for level in df_predictions.index.names:
-                if len(df_predictions.index.unique(level)) == 1:
-                    df_predictions.set_index(df_predictions.index.droplevel(level), inplace=True)
+            for level in df_measurements.index.names:
+                if len(df_measurements.index.unique(level)) == 1:
+                    df_measurements.set_index(df_measurements.index.droplevel(level), inplace=True)
 
             # null hypothesis values
             null_index = ['Unit Variance Normal']
-            null_squared_errors = get_squared_errors(df_predictions, null_index)
+            null_squared_errors = df_measurements.loc[null_index, 'squared_errors']
             # y_null, y_hat_null = get_targets_and_predictions(df_predictions, null_index)
 
             # loop over alternatives
-            for index in df_predictions.index.unique():
+            for index in df_measurements.index.unique():
                 if isinstance(index, tuple):
-                    index = pd.MultiIndex.from_tuples(tuples=[index], names=df_predictions.index.names)
+                    index = pd.MultiIndex.from_tuples(tuples=[index], names=df_measurements.index.names)
                 else:
-                    index = pd.Index(data=[index], name=df_predictions.index.names)
+                    index = pd.Index(data=[index], name=df_measurements.index.names)
 
                 # MSE
-                squared_errors = get_squared_errors(df_predictions, index)
-                mse = '{:.2g}'.format(squared_errors.mean())
+                squared_errors = df_measurements.loc[index, 'squared_errors']
+                mse = squared_errors.mean()
                 p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
                 # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
+                mse = '\\sout{{{:.2g}}}'.format(mse) if p < 0.1 else '{:.2g}'.format(mse)
                 p = '$H_0' if list(index) == null_index else '{:.2g}'.format(p)
                 df_mse_add = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
                 df_mse = pd.concat([df_mse, df_mse_add])
+
+                # ECE
 
                 # # Pearson
                 # y, y_hat = get_targets_and_predictions(df_predictions, index)
