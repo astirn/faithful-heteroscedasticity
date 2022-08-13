@@ -122,8 +122,8 @@ for fold in np.unique(data['split']):
             squared_errors = tf.reduce_sum((y_valid_norm - params['mean']) ** 2, axis=-1)
             cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y_valid_norm), axis=-1)
             measurements = pd.concat([measurements, pd.DataFrame({
-                'squared_errors': squared_errors,
-                'cdf_y': cdf_y,
+                'squared errors': squared_errors,
+                'F(y)': cdf_y,
             }, index.repeat(len(y_valid)))])
 
 # save performance measures

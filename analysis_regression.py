@@ -67,7 +67,7 @@ def generate_uci_tables():
 
             # null hypothesis values
             null_index = ['Unit Variance Normal']
-            null_squared_errors = df_measurements.loc[null_index, 'squared_errors']
+            null_squared_errors = df_measurements.loc[null_index, 'squared errors']
             # y_null, y_hat_null = get_targets_and_predictions(df_predictions, null_index)
 
             # loop over alternatives
@@ -78,7 +78,7 @@ def generate_uci_tables():
                     index = pd.Index(data=[index], name=df_measurements.index.names)
 
                 # MSE
-                squared_errors = df_measurements.loc[index, 'squared_errors']
+                squared_errors = df_measurements.loc[index, 'squared errors']
                 mse = squared_errors.mean()
                 p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
                 # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
