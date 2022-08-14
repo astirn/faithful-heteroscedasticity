@@ -26,7 +26,7 @@ def steigers_test(y, y_hat_1, y_hat_2):
     return r1, r2, log10_p
 
 
-def print_uci_table(df, file_name):
+def print_uci_table(df, file_name, null_columns=None):
 
     # get column names
     if isinstance(df.index, pd.Index):
@@ -40,7 +40,7 @@ def print_uci_table(df, file_name):
     df_latex = df.melt(id_vars=['Dataset'], value_vars=df.columns[1:], ignore_index=False)
     df_latex = df_latex.reset_index()
     df_latex = df_latex.pivot(index='Dataset', columns=columns + ['variable'], values='value')
-    df_latex = pd.concat([df_latex[('Unit Variance Normal', 'MSE')],
+    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance Normal', null_columns or slice(None))],
                           df_latex[['Heteroscedastic Normal']],
                           df_latex[['Faithful Heteroscedastic Normal']]], axis=1)
     df_latex.style.hide(axis=1, names=True).to_latex(
@@ -51,10 +51,11 @@ def print_uci_table(df, file_name):
     )
 
 
-def generate_uci_tables():
+def generate_uci_tables(alpha=0.1, ece_bins=5):
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
+    df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'regression')):
         measurements_file = os.path.join('experiments', 'regression', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
@@ -82,26 +83,22 @@ def generate_uci_tables():
                 mse = squared_errors.mean()
                 p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
                 # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
-                mse = '\\sout{{{:.2g}}}'.format(mse) if p < 0.1 else '{:.2g}'.format(mse)
+                mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
                 p = '$H_0' if list(index) == null_index else '{:.2g}'.format(p)
                 df_mse_add = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
                 df_mse = pd.concat([df_mse, df_mse_add])
 
                 # ECE
+                cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
+                probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
+                probs_hat = [sum(cdf_y <= prob) / len(cdf_y) for prob in probs]
+                ece = '{:.2g}'.format(np.sum((probs - probs_hat) ** 2))
+                df_ece_add = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
+                df_ece = pd.concat([df_ece, df_ece_add])
 
-                # # Pearson
-                # y, y_hat = get_targets_and_predictions(df_predictions, index)
-                # assert np.min(np.abs(y - y_null)) == 0
-                # _, r, log10_p = steigers_test(y, y_hat_null, y_hat)
-                # df_pearson = pd.concat([df_pearson, pd.DataFrame({'Dataset': dataset,
-                #                                                   'Pearson': r,
-                #                                                   '$\\log_{10}(p)$': log10_p}, index)])
-
-            # # ECE
-            # ece = ExpectedCalibrationError(num_bins=6)
-
-    print_uci_table(df_mse, file_name='regression_uci_mse.tex')
-    # print_uci_table(df_pearson, file_name='regression_uci_pearson.tex')
+    # print tables
+    print_uci_table(df_mse, file_name='regression_uci_mse.tex', null_columns=['MSE'])
+    print_uci_table(df_ece, file_name='regression_uci_ece.tex')
 
 
 if __name__ == '__main__':
