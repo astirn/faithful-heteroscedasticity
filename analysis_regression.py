@@ -26,7 +26,7 @@ def steigers_test(y, y_hat_1, y_hat_2):
     return r1, r2, log10_p
 
 
-def print_uci_table(df, file_name, null_columns=None):
+def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
 
     # get column names
     if isinstance(df.index, pd.Index):
@@ -43,7 +43,10 @@ def print_uci_table(df, file_name, null_columns=None):
     df_latex = pd.concat([df_latex.loc[:, ('Unit Variance Normal', null_columns or slice(None))],
                           df_latex[['Heteroscedastic Normal']],
                           df_latex[['Faithful Heteroscedastic Normal']]], axis=1)
-    df_latex.style.hide(axis=1, names=True).to_latex(
+    style = df_latex.style.hide(axis=1, names=True)
+    if highlight_min:
+        style = style.highlight_min(props='bfseries:;', axis=1)
+    style.to_latex(
         buf=os.path.join('tables', file_name),
         column_format='l' + ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)]),
         hrules=True,
@@ -51,7 +54,7 @@ def print_uci_table(df, file_name, null_columns=None):
     )
 
 
-def generate_uci_tables(normalized, alpha=0.1, ece_bins=5):
+def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided'):
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
@@ -91,16 +94,22 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5):
 
                 # ECE
                 cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
-                probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-                probs_hat = [sum(cdf_y <= prob) / len(cdf_y) for prob in probs]
-                ece = '{:.2g}'.format(np.sum((probs - probs_hat) ** 2))
+                p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
+                if ece_method == 'one-sided':
+                    p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
+                    ece = '{:.2g}'.format(np.sum((p - p_hat) ** 2))
+                elif ece_method == 'two-sided':
+                    p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
+                    ece = '{:.2g}'.format(np.sum((1 / ece_bins - np.array(p_hat)) ** 2))
+                else:
+                    raise NotImplementedError
                 df_ece_add = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
                 df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
     suffix = ('_normalized' if normalized else '')
     print_uci_table(df_mse, file_name='regression_uci_mse' + suffix + '.tex', null_columns=['MSE'])
-    print_uci_table(df_ece, file_name='regression_uci_ece' + suffix + '.tex')
+    print_uci_table(df_ece, file_name='regression_uci_ece' + suffix + '.tex', highlight_min=True)
 
 
 if __name__ == '__main__':
