@@ -1,0 +1,18 @@
+\begin{tabular}{l|l|ll|ll}
+\toprule
+ & Unit Variance Normal & \multicolumn{2}{r}{Heteroscedastic Normal} & \multicolumn{2}{r}{Faithful Heteroscedastic Normal} \\
+ & MSE & MSE & Welch's $p$ & MSE & Welch's $p$ \\
+Dataset &  &  &  &  &  \\
+\midrule
+boston & 8.5 & \sout{13} & 0.065 & 8.5 & 0.5 \\
+carbon & 0.0002 & 0.0002 & 0.51 & 0.0002 & 0.5 \\
+concrete & 17 & \sout{26} & 0.00092 & 17 & 0.49 \\
+energy & 2.4 & \sout{3.4} & 0.0009 & 2.4 & 0.5 \\
+naval & 3.2e-08 & \sout{5.9e-06} & 2.3e-287 & \sout{3.4e-08} & 0.098 \\
+power plant & 14 & \sout{15} & 0.083 & 14 & 0.44 \\
+superconductivity & 1.2e+02 & \sout{1.9e+02} & 9.8e-52 & 1.2e+02 & 0.44 \\
+wine-red & 0.39 & 0.39 & 0.48 & 0.39 & 0.5 \\
+wine-white & 0.48 & 0.48 & 0.51 & 0.48 & 0.5 \\
+yacht & 0.14 & \sout{1.3e+02} & 7.2e-10 & 0.14 & 0.56 \\
+\bottomrule
+\end{tabular}

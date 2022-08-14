@@ -51,7 +51,7 @@ def print_uci_table(df, file_name, null_columns=None):
     )
 
 
-def generate_uci_tables(alpha=0.1, ece_bins=5):
+def generate_uci_tables(normalized, alpha=0.1, ece_bins=5):
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
@@ -60,6 +60,7 @@ def generate_uci_tables(alpha=0.1, ece_bins=5):
         measurements_file = os.path.join('experiments', 'regression', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
             df_measurements = pd.read_pickle(measurements_file).sort_index()
+            df_measurements = df_measurements[df_measurements['normalized'] == normalized]
 
             # drop index levels with just one unique value
             for level in df_measurements.index.names:
@@ -97,8 +98,9 @@ def generate_uci_tables(alpha=0.1, ece_bins=5):
                 df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    print_uci_table(df_mse, file_name='regression_uci_mse.tex', null_columns=['MSE'])
-    print_uci_table(df_ece, file_name='regression_uci_ece.tex')
+    suffix = ('_normalized' if normalized else '')
+    print_uci_table(df_mse, file_name='regression_uci_mse' + suffix + '.tex', null_columns=['MSE'])
+    print_uci_table(df_ece, file_name='regression_uci_ece' + suffix + '.tex')
 
 
 if __name__ == '__main__':
@@ -108,4 +110,5 @@ if __name__ == '__main__':
         os.mkdir('tables')
 
     # UCI tables
-    generate_uci_tables()
+    generate_uci_tables(normalized=False)
+    generate_uci_tables(normalized=True)

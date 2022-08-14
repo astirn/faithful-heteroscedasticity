@@ -117,14 +117,20 @@ for fold in np.unique(data['split']):
             index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
 
             # save local performance measurements
-            y_valid_norm = z_normalization.normalize_targets(y_valid)
             params = model.predict(x=x_valid, verbose=0)
-            squared_errors = tf.reduce_sum((y_valid_norm - params['mean']) ** 2, axis=-1)
-            cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y_valid_norm), axis=-1)
-            measurements = pd.concat([measurements, pd.DataFrame({
-                'squared errors': squared_errors,
-                'F(y)': cdf_y,
-            }, index.repeat(len(y_valid)))])
+            for normalized in [True, False]:  # True must run first
+                if normalized:
+                    y = z_normalization.normalize_targets(y_valid)
+                else:
+                    y = y_valid
+                    params = {key: z_normalization.scale_parameters(key, values) for key, values in params.items()}
+                squared_errors = tf.reduce_sum((y - params['mean']) ** 2, axis=-1)
+                cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y), axis=-1)
+                measurements = pd.concat([measurements, pd.DataFrame({
+                    'normalized': normalized,
+                    'squared errors': squared_errors,
+                    'F(y)': cdf_y,
+                }, index.repeat(len(y_valid)))])
 
 # save performance measures
 measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
