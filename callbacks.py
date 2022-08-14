@@ -50,7 +50,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
                 update_string += ' | Patience: {:d}/{:d}'.format(self.wait, self.patience)
 
             # test for NaN and Inf
-            if tf.math.is_nan(logs['LL']) or tf.math.is_inf(logs['LL']):
+            if tf.math.is_nan(logs['RMSE']) or tf.math.is_inf(logs['RMSE']):
                 self.nan_inf = True
                 self.stopped_epoch = epoch
                 self.model.stop_training = True

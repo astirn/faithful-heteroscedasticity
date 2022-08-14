@@ -76,11 +76,7 @@ for fold in np.unique(data['split']):
                 **model_and_config['config'], **nn_kwargs
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
-            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
-                MeanLogLikelihood(),
-                RootMeanSquaredError(),
-                ExpectedCalibrationError()
-            ])
+            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
             # determine directory where to save model
             model_dir = os.path.join(trial_path, model.name)
@@ -95,19 +91,15 @@ for fold in np.unique(data['split']):
 
             # otherwise, train and save the model
             else:
-                valid_freq = 100
+                valid_freq = 10
                 hist = model.fit(x=x_train, y=z_normalization.normalize_targets(y_train),
                                  validation_data=(x_valid, z_normalization.normalize_targets(y_valid)),
                                  validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
-                                 callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=10)])
+                                 callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=100)])
                 model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
                 history = hist.history
                 with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:
                     pickle.dump(history, f)
-
-            # test model
-            test_metrics = model.evaluate(x=x_valid, y=z_normalization.normalize_targets(y_valid), verbose=0)
-            print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
 
             # index for this model and configuration
             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
