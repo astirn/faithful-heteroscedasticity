@@ -354,7 +354,6 @@ if __name__ == '__main__':
     # evaluate predictive model
     mdl.num_mc_samples = 2000
     p_y_x = mdl.predictive_distribution(x=toy_data['x_test'])
-    mdl_mean, mdl_std = p_y_x.mean().numpy(), p_y_x.stddev().numpy()
 
     # plot results for toy data
     fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), title=args.model, **toy_data)
