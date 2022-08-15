@@ -7,149 +7,61 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from callbacks import RegressionCallback
 from data_regression import generate_toy_data
-from matplotlib import pyplot as plt
 from metrics import RootMeanSquaredError
 
 # script arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-parser.add_argument('--experiment', type=str, default='convergence', help='which experiment to run')
-parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
-parser.add_argument('--seed_data', type=int, default=853211, help='number of trials per fold')
-parser.add_argument('--seed_trial', type=int, default=112358, help='number of trials per fold')
-parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
+parser.add_argument('--epoch_modulo', type=int, default=1000, help='number of epochs beteween logging results')
+parser.add_argument('--epochs', type=int, default=20000, help='number of training epochs')
+parser.add_argument('--learning_rate', type=float, default=1e-2, help='learning rate')
+parser.add_argument('--seed', type=int, default=112358, help='number of trials per fold')
 args = parser.parse_args()
 
 # make experimental directory base path
 exp_path = os.path.join('experiments', 'convergence')
 os.makedirs(exp_path, exist_ok=True)
 
+# set random seed
+np.random.seed(args.seed)
+tf.keras.utils.set_random_seed(args.seed)
+
 # generate data
-np.random.seed(args.seed_data)
 data = generate_toy_data()
+with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
+    pickle.dump(data, f)
 
-# loop over isolated point initial conditions
-for offset in [0]:
-# for offset in range(-10, 15, 5):
+# initialize mean model
+mean_model = models.UnitVarianceNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
+mean_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
 
-    # fit mean model to meet offset
-    offset_vector = np.zeros_like(data['y_train'])
-    offset_vector[-2:] = offset
-    mean_model = models.UnitVarianceNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
-    mean_model.compile(optimizer=tf.keras.optimizers.Adam(1e-2), metrics=[RootMeanSquaredError()])
-    hist = mean_model.fit(x=data['x_train'], y=data['y_train'] + offset_vector,
-                          batch_size=data['x_train'].shape[0], epochs=int(10e3), verbose=0,
-                          callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
+# initialize heteroscedastic model such that it starts with the same mean network initialization
+full_model = models.HeteroscedasticNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
+full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+full_model.f_mean.set_weights(mean_model.get_weights())
 
-    # debug plot
-    if args.debug:
-        p_y_x = mean_model.predictive_distribution(x=data['x_test'])
-        models.fancy_plot(predicted_mean=p_y_x.mean(), predicted_std=p_y_x.stddev(), title='Mean Model', **data)
-        plt.show()
+# loop over the
+measurements = pd.DataFrame()
+for iteration in range(args.epochs // args.epoch_modulo):
+    epoch = iteration * args.epoch_modulo
+    print('\rEpoch {:d} of {:d}'.format(epoch, args.epochs), end='')
 
-    # transfer mean network parameters to a heteroscedastic model
-    full_model = models.HeteroscedasticNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
-    full_model.compile(optimizer=tf.keras.optimizers.Adam(1e-2), metrics=[RootMeanSquaredError()])
-    full_model.f_mean.set_weights(mean_model.get_weights())
+    # loop over the models
+    for model in [mean_model, full_model]:
+        model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
 
-    # jointly fit mean and variance of the heteroscedastic model
-    hist = full_model.fit(x=data['x_train'], y=data['y_train'],
-                          batch_size=data['x_train'].shape[0], epochs=int(10e3), verbose=0,
-                          callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
+        # measure performance
+        py_x = model.predictive_distribution(x=data['x_test'])
+        index = pd.MultiIndex.from_tuples([(model_name, epoch)], names=['Model', 'Epoch'])
+        measurements = pd.concat([measurements, pd.DataFrame(
+            data={'x': data['x_test'][:, 0], 'Mean': py_x.mean()[:, 0], 'Std. Deviation': py_x.stddev()[:, 0]},
+            index=index.repeat(data['x_test'].shape[0]))])
 
-    # debug plot
-    if args.debug:
-        p_y_x = full_model.predictive_distribution(x=data['x_test'])
-        models.fancy_plot(predicted_mean=p_y_x.mean(), predicted_std=p_y_x.stddev(), title='Fit', **data)
-        plt.show()
+        # improve fit by specified number of epochs
+        hist = model.fit(x=data['x_train'], y=data['y_train'],
+                         batch_size=data['x_train'].shape[0], epochs=args.epoch_modulo, verbose=0)
 
-    print(1)
 
-# # loop over folds
-# measurements = pd.DataFrame()
-# for fold in np.unique(data['split']):
-#     fold_path = os.path.join(exp_path, 'fold_' + str(fold))
-#
-#     # loop over trials
-#     for trial in range(1, args.num_trials + 1):
-#         trial_path = os.path.join(fold_path, 'trial_' + str(trial))
-#
-#         # data pipeline
-#         i_train = data['split'] != fold
-#         i_valid = data['split'] == fold
-#         x_train, y_train = data['covariates'][i_train], tf.constant(data['response'][i_train])
-#         x_valid, y_valid = data['covariates'][i_valid], tf.constant(data['response'][i_valid])
-#         x_scale = preprocessing.StandardScaler().fit(x_train)
-#         x_train = tf.constant(x_scale.transform(x_train))
-#         x_valid = tf.constant(x_scale.transform(x_valid))
-#
-#         # target and parameter normalization object
-#         z_normalization = ZScoreNormalization(y_mean=tf.reduce_mean(y_train, axis=0),
-#                                               y_var=tf.math.reduce_variance(y_train, axis=0))
-#
-#         # loop over the models and configurations
-#         for model_and_config in models_and_configs:
-#             print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
-#
-#             # each trial within a fold gets the same random seed
-#             tf.keras.utils.set_random_seed(trial * args.trial_seed)
-#
-#             # configure and build model
-#             model = model_and_config['model'](
-#                 dim_x=x_train.shape[1],
-#                 dim_y=y_train.shape[1],
-#                 **model_and_config['config'], **nn_kwargs
-#             )
-#             optimizer = tf.keras.optimizers.Adam(1e-3)
-#             model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
-#
-#             # determine directory where to save model
-#             model_dir = os.path.join(trial_path, model.name)
-#
-#             # if we are set to resume and the model directory already contains a saved model, load it
-#             if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
-#                 print(model.name + ' exists. Loading...')
-#                 checkpoint = tf.train.Checkpoint(model)
-#                 checkpoint.restore(os.path.join(model_dir, 'best_checkpoint')).expect_partial()
-#                 with open(os.path.join(model_dir, 'hist.pkl'), 'rb') as f:
-#                     history = pickle.load(f)
-#
-#             # otherwise, train and save the model
-#             else:
-#                 valid_freq = 10
-#                 hist = model.fit(x=x_train, y=z_normalization.normalize_targets(y_train),
-#                                  validation_data=(x_valid, z_normalization.normalize_targets(y_valid)),
-#                                  validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
-#                                  callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=100)])
-#                 model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
-#                 history = hist.history
-#                 with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:
-#                     pickle.dump(history, f)
-#
-#             # index for this model and configuration
-#             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-#             index = {'Model': model_name}
-#             index.update(nn_kwargs)
-#             index.update(model_and_config['config'])
-#             index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
-#
-#             # save local performance measurements
-#             params = model.predict(x=x_valid, verbose=0)
-#             for normalized in [True, False]:  # True must run first
-#                 if normalized:
-#                     y = z_normalization.normalize_targets(y_valid)
-#                 else:
-#                     y = y_valid
-#                     params = {key: z_normalization.scale_parameters(key, values) for key, values in params.items()}
-#                 squared_errors = tf.reduce_sum((y - params['mean']) ** 2, axis=-1)
-#                 cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y), axis=-1)
-#                 measurements = pd.concat([measurements, pd.DataFrame({
-#                     'normalized': normalized,
-#                     'squared errors': squared_errors,
-#                     'F(y)': cdf_y,
-#                 }, index.repeat(len(y_valid)))])
-#
-# # save performance measures
-# measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+# save performance measures
+measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))

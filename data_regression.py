@@ -6,7 +6,6 @@ import zipfile
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 
 from urllib import request
 
@@ -189,16 +188,13 @@ def generate_toy_data(num_samples=500, sparse=False):
     y_train = np.concatenate([y_train, y_isolated], axis=0)
 
     # generate evaluation points with the associated actual mean and standard deviation
-    x_test = np.linspace(-4, 14, 250)
+    x_test = np.linspace(0, 10, 250)
     target_mean = data_mean(x_test)
     target_std = data_std(x_test)
 
     # process return tuple
-    return dict(x_train=tf.constant(x_train[:, None], tf.float32),
-                y_train=tf.constant(y_train[:, None], tf.float32),
-                x_test=tf.constant(x_test[:, None], tf.float32),
-                target_mean=tf.constant(target_mean[:, None], tf.float32),
-                target_std=tf.constant(target_std[:, None], tf.float32))
+    return dict(x_train=x_train[:, None], y_train=y_train[:, None],
+                x_test=x_test[:, None], target_mean=target_mean[:, None], target_std=target_std[:, None])
 
 
 def create_or_load_fold(dataset, num_folds, save_path=None):
