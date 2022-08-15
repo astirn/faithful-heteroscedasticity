@@ -16,7 +16,7 @@ parser.add_argument('--debug', action='store_true', default=False, help='run eag
 parser.add_argument('--epoch_modulo', type=int, default=1000, help='number of epochs beteween logging results')
 parser.add_argument('--epochs', type=int, default=20000, help='number of training epochs')
 parser.add_argument('--learning_rate', type=float, default=1e-2, help='learning rate')
-parser.add_argument('--seed', type=int, default=112358, help='number of trials per fold')
+parser.add_argument('--seed', type=int, default=853211, help='number of trials per fold')
 args = parser.parse_args()
 
 # make experimental directory base path
@@ -41,6 +41,11 @@ full_model = models.HeteroscedasticNormal(dim_x=data['x_train'].shape[1], dim_y=
 full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
 full_model.f_mean.set_weights(mean_model.get_weights())
 
+# initialize faithful heteroscedastic model such that it starts with the same mean network initialization
+faith_model = models.FaithfulHeteroscedasticNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
+faith_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+faith_model.f_mean.set_weights(mean_model.get_weights())
+
 # loop over the
 measurements = pd.DataFrame()
 for iteration in range(args.epochs // args.epoch_modulo):
@@ -48,7 +53,7 @@ for iteration in range(args.epochs // args.epoch_modulo):
     print('\rEpoch {:d} of {:d}'.format(epoch, args.epochs), end='')
 
     # loop over the models
-    for model in [mean_model, full_model]:
+    for model in [mean_model, full_model, faith_model]:
         model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
 
         # measure performance
