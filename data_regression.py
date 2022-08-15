@@ -6,6 +6,7 @@ import zipfile
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
 from urllib import request
 
@@ -179,27 +180,25 @@ def generate_toy_data(num_samples=500, sparse=False):
     def data_std(x):
         return 0.1 + np.abs(0.5 * x)
 
-    # sample training data
-    if not sparse:
-        x_data = np.random.uniform(0, 10, size=num_samples)
-    else:
-        x_data = np.random.uniform(2.5, 7.5, size=num_samples - 2)
-    y_data = data_mean(x_data) + np.random.normal(scale=data_std(x_data))
-    if sparse:
-        x_isolated = np.array([0.5, 9.5])
-        x_data = np.concatenate([x_data, x_isolated], axis=0)
-        y_data = np.concatenate([y_data, data_mean(x_isolated)], axis=0)
+    # generate training and validation data
+    x_isolated = np.array([0.5, 9.5])
+    y_isolated = data_mean(x_isolated)
+    x_train = np.random.uniform(2.5, 7.5, size=num_samples - len(x_isolated))
+    y_train = data_mean(x_train) + np.random.normal(scale=data_std(x_train))
+    x_train = np.concatenate([x_train, x_isolated], axis=0)
+    y_train = np.concatenate([y_train, y_isolated], axis=0)
 
     # generate evaluation points with the associated actual mean and standard deviation
-    x_eval = np.linspace(-4, 14, 250)
-    true_mean = data_mean(x_eval)
-    true_std = data_std(x_eval)
+    x_test = np.linspace(-4, 14, 250)
+    target_mean = data_mean(x_test)
+    target_std = data_std(x_test)
 
     # process return tuple
-    return_tuple = (x_data, y_data, x_eval, true_mean, true_std)
-    return_tuple = (np.expand_dims(np.float32(x), axis=-1) for x in return_tuple)
-
-    return return_tuple
+    return dict(x_train=tf.constant(x_train[:, None], tf.float32),
+                y_train=tf.constant(y_train[:, None], tf.float32),
+                x_test=tf.constant(x_test[:, None], tf.float32),
+                target_mean=tf.constant(target_mean[:, None], tf.float32),
+                target_std=tf.constant(target_std[:, None], tf.float32))
 
 
 def create_or_load_fold(dataset, num_folds, save_path=None):

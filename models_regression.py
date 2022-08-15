@@ -256,15 +256,15 @@ class VariationalGammaNormal(Regression):
         return mu, alpha, beta
 
 
-def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, title):
+def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean, predicted_std, title):
     # squeeze everything
     x_train = np.squeeze(x_train)
     y_train = np.squeeze(y_train)
-    x_eval = np.squeeze(x_eval)
-    true_mean = np.squeeze(true_mean)
-    true_std = np.squeeze(true_std)
-    mdl_mean = np.squeeze(mdl_mean)
-    mdl_std = np.squeeze(mdl_std)
+    x_test = np.squeeze(x_test)
+    target_mean = np.squeeze(target_mean)
+    target_std = np.squeeze(target_std)
+    predicted_mean = np.squeeze(predicted_mean)
+    predicted_std = np.squeeze(predicted_std)
 
     # get a new figure
     fig, ax = plt.subplots(2, 1)
@@ -274,14 +274,14 @@ def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std,
     sns.scatterplot(x_train, y_train, ax=ax[0])
 
     # plot the true mean and standard deviation
-    ax[0].plot(x_eval, true_mean, '--k')
-    ax[0].plot(x_eval, true_mean + true_std, ':k')
-    ax[0].plot(x_eval, true_mean - true_std, ':k')
+    ax[0].plot(x_test, target_mean, '--k')
+    ax[0].plot(x_test, target_mean + target_std, ':k')
+    ax[0].plot(x_test, target_mean - target_std, ':k')
 
     # plot the model's mean and standard deviation
-    l = ax[0].plot(x_eval, mdl_mean)[0]
-    ax[0].fill_between(x_eval[:, ], mdl_mean - mdl_std, mdl_mean + mdl_std, color=l.get_color(), alpha=0.5)
-    ax[0].plot(x_eval, true_mean, '--k')
+    l = ax[0].plot(x_test, predicted_mean)[0]
+    ax[0].fill_between(x_test[:, ], predicted_mean - predicted_std, predicted_mean + predicted_std, color=l.get_color(), alpha=0.5)
+    ax[0].plot(x_test, target_mean, '--k')
 
     # clean it up
     ax[0].set_xlim([0, 10])
@@ -289,8 +289,8 @@ def fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std,
     ax[0].set_ylabel('y')
 
     # plot the std
-    ax[1].plot(x_eval, mdl_std, label='predicted')
-    ax[1].plot(x_eval, true_std, '--k', label='truth')
+    ax[1].plot(x_test, predicted_std, label='predicted')
+    ax[1].plot(x_test, target_std, '--k', label='truth')
     ax[1].set_xlim([0, 10])
     ax[1].set_ylim([0, 6])
     ax[1].set_xlabel('x')
@@ -312,14 +312,10 @@ if __name__ == '__main__':
     parser.add_argument('--optimization', type=str, default='first-order', help='for Normal, MC-Dropout, DeepEnsemble')
     parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Variational Gamma-Normal')
     parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Variational Gamma-Normal')
-    parser.add_argument('--sparse', action='store_true', default=False, help='sparse toy data option')
     args = parser.parse_args()
 
     # load data
-    x_train, y_train, _, _, _ = generate_toy_data(num_samples=500, sparse=bool(args.sparse))
-    ds_train = tf.data.Dataset.from_tensor_slices({'x': x_train, 'y': y_train}).batch(x_train.shape[0])
-    x_valid, y_valid, x_eval, true_mean, true_std = generate_toy_data(sparse=bool(args.sparse))
-    ds_valid = tf.data.Dataset.from_tensor_slices({'x': x_valid, 'y': y_valid}).batch(x_valid.shape[0])
+    toy_data = generate_toy_data(num_samples=500)
 
     # pick the appropriate model
     plot_title = args.model
@@ -334,8 +330,8 @@ if __name__ == '__main__':
 
     # declare model instance
     mdl = MODEL(
-        dim_x=x_train.shape[1],
-        dim_y=y_train.shape[1],
+        dim_x=toy_data['x_train'].shape[1],
+        dim_y=toy_data['y_train'].shape[1],
         optimization=args.optimization,  # for Normal
         num_mc_samples=20,  # for MC-Dropout
         empirical_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
@@ -351,15 +347,15 @@ if __name__ == '__main__':
     ])
 
     # train model
-    validation_freq = 500
-    hist = mdl.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(30e3), verbose=0,
+    hist = mdl.fit(x=toy_data['x_train'], y=toy_data['y_train'],
+                   batch_size=toy_data['x_train'].shape[0], epochs=int(3e3), verbose=0,
                    callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
     mdl.num_mc_samples = 2000
-    p_y_x = mdl.predictive_distribution(x=x_eval)
+    p_y_x = mdl.predictive_distribution(x=toy_data['x_test'])
     mdl_mean, mdl_std = p_y_x.mean().numpy(), p_y_x.stddev().numpy()
 
     # plot results for toy data
-    fancy_plot(x_train, y_train, x_eval, true_mean, true_std, mdl_mean, mdl_std, args.model)
+    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), title=args.model, **toy_data)
     plt.show()
