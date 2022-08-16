@@ -88,6 +88,8 @@ def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
 
 
 def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+    if not os.path.exists(os.path.join('experiments', 'regression')):
+        return
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
