@@ -8,15 +8,14 @@ import pandas as pd
 import tensorflow as tf
 
 from data_regression import generate_toy_data
-from metrics import RootMeanSquaredError
+from metrics import RootMeanSquaredError, ExpectedCalibrationError
 
 # script arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
 parser.add_argument('--epoch_modulo', type=int, default=1000, help='number of epochs beteween logging results')
 parser.add_argument('--epochs', type=int, default=20000, help='number of training epochs')
-parser.add_argument('--learning_rate', type=float, default=1e-2, help='learning rate')
-parser.add_argument('--seed', type=int, default=853211, help='number of trials per fold')
+parser.add_argument('--learning_rate', type=float, default=5e-3, help='learning rate')
+parser.add_argument('--seed', type=int, default=12345, help='number of trials per fold')
 args = parser.parse_args()
 
 # make experimental directory base path
@@ -34,39 +33,49 @@ with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
 
 # initialize mean model
 mean_model = models.UnitVarianceNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
-mean_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+mean_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                   metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
 # initialize heteroscedastic model such that it starts with the same mean network initialization
 full_model = models.HeteroscedasticNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
-full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                   metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 full_model.f_mean.set_weights(mean_model.get_weights())
 
 # initialize faithful heteroscedastic model such that it starts with the same mean network initialization
 faith_model = models.FaithfulHeteroscedasticNormal(dim_x=data['x_train'].shape[1], dim_y=data['y_train'].shape[1])
-faith_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+faith_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                    metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 faith_model.f_mean.set_weights(mean_model.get_weights())
 
-# loop over the
+# loop over the epochs
+metrics = pd.DataFrame()
 measurements = pd.DataFrame()
-for iteration in range(args.epochs // args.epoch_modulo):
-    epoch = iteration * args.epoch_modulo
-    print('\rEpoch {:d} of {:d}'.format(epoch, args.epochs), end='')
+for epoch in range(0, args.epochs + 1, args.epoch_modulo):
 
     # loop over the models
     for model in [mean_model, full_model, faith_model]:
+        print('\rEpoch {:d} of {:d}: {:s}'.format(epoch, args.epochs, model.name), end='')
+
+        # index for this model
         model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+        index = pd.Index([model_name], name='Model')
+
+        # improve fit by specified number of epochs
+        if epoch > 0:
+            hist = model.fit(x=data['x_train'], y=data['y_train'],
+                             batch_size=data['x_train'].shape[0], epochs=args.epoch_modulo, verbose=0)
+            metrics = pd.concat([metrics, pd.DataFrame(
+                data={'Epoch': epoch + np.array(hist.epoch), 'RMSE': hist.history['RMSE'], 'ECE': hist.history['ECE']},
+                index=index.repeat(args.epoch_modulo))])
 
         # measure performance
         py_x = model.predictive_distribution(x=data['x_test'])
-        index = pd.MultiIndex.from_tuples([(model_name, epoch)], names=['Model', 'Epoch'])
         measurements = pd.concat([measurements, pd.DataFrame(
-            data={'x': data['x_test'][:, 0], 'Mean': py_x.mean()[:, 0], 'Std. Deviation': py_x.stddev()[:, 0]},
+            data={'Epoch': epoch, 'x': data['x_test'][:, 0],
+                  'Mean': py_x.mean()[:, 0], 'Std. Deviation': py_x.stddev()[:, 0]},
             index=index.repeat(data['x_test'].shape[0]))])
 
-        # improve fit by specified number of epochs
-        hist = model.fit(x=data['x_train'], y=data['y_train'],
-                         batch_size=data['x_train'].shape[0], epochs=args.epoch_modulo, verbose=0)
-
-
 # save performance measures
+metrics.to_pickle(os.path.join(exp_path, 'metrics.pkl'))
 measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))

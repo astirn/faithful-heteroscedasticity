@@ -1,29 +1,62 @@
 import os
+import pickle
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+import seaborn as sns
+
+from matplotlib import pyplot as plt
 
 
-def get_target_dimension(df):
-    return len([col for col in df.columns if col[:2] == 'y_'])
+def convergence_plots():
+    # necessary files
+    data_file = os.path.join('experiments', 'convergence', 'data.pkl')
+    metrics_file = os.path.join('experiments', 'convergence', 'metrics.pkl')
+    measurements_file = os.path.join('experiments', 'convergence', 'measurements.pkl')
+    if not os.path.exists(data_file) or not os.path.exists(metrics_file) or not os.path.exists(measurements_file):
+        return
 
+    # load data and measurements
+    with open(data_file, 'rb') as f:
+        data = pickle.load(f)
+    metrics = pd.read_pickle(metrics_file)
+    measurements = pd.read_pickle(measurements_file)
 
-def steigers_test(y, y_hat_1, y_hat_2):
-    r1 = stats.pearsonr(y, y_hat_1)[0]
-    r2 = stats.pearsonr(y, y_hat_2)[0]
-    r12 = stats.pearsonr(y_hat_1, y_hat_2)[0]
+    # learning curve figure
+    fig_learning_curve, ax = plt.subplots(ncols=2, figsize=(10, 5))
+    sns.lineplot(data=metrics.reset_index(), x='Epoch', y='RMSE', hue='Model', ax=ax[0])
+    sns.lineplot(data=metrics.reset_index(), x='Epoch', y='ECE', hue='Model', ax=ax[1])
+    plt.tight_layout()
+    fig_learning_curve.savefig(os.path.join('assets', 'toy_learning_curve.pdf'))
 
-    # Steiger's test
-    n = len(y)
-    z1 = 0.5 * (np.log(1 + r1) - np.log(1 - r1))
-    z2 = 0.5 * (np.log(1 + r2) - np.log(1 - r2))
-    rm2 = (r1 ** 2 + r2 ** 2) / 2
-    f = (1 - r12) / 2 / (1 - rm2)
-    h = (1 - f * rm2) / (1 - rm2)
-    z = abs(z1 - z2) * ((n - 3) / (2 * (1 - r12) * h)) ** 0.5
-    log10_p = (stats.norm.logcdf(-z) + np.log(2)) / np.log10(np.e)
+    # convergence figure
+    models = measurements.index.unique(0)
+    fig_convergence, ax = plt.subplots(nrows=2, ncols=len(models), figsize=(5 * len(models), 10))
+    for i, model in enumerate(models):
 
-    return r1, r2, log10_p
+        # title
+        ax[0, i].set_title(model)
+
+        # data rich regions
+        x = [data['x_train'][:-2].min(), data['x_train'][:-2].max()]
+        ax[0, i].fill_between(x, 0, 1, color='grey', alpha=0.5, transform=ax[0, i].get_xaxis_transform())
+        ax[1, i].fill_between(x, 0, 1, color='grey', alpha=0.5, transform=ax[1, i].get_xaxis_transform())
+
+        # predictive moments
+        df = measurements.loc[model].reset_index()
+        sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend='brief', ax=ax[0, i])
+        sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend='brief', ax=ax[1, i])
+
+        # true mean and standard deviation
+        ax[0, i].plot(data['x_test'], data['target_mean'], color='red', linestyle=':')
+        ax[1, i].plot(data['x_test'], data['target_std'], color='red', linestyle=':')
+
+        # plot isolated points on top layer
+        ax[0, i].scatter(data['x_train'][-2:], data['y_train'][-2:], color='red', marker='o')
+
+    # finalize and save figure
+    plt.tight_layout()
+    fig_convergence.savefig(os.path.join('assets', 'toy_convergence.pdf'))
 
 
 def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
@@ -47,7 +80,7 @@ def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
     if highlight_min:
         style = style.highlight_min(props='bfseries:;', axis=1)
     style.to_latex(
-        buf=os.path.join('tables', file_name),
+        buf=os.path.join('assets', file_name),
         column_format='l' + ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)]),
         hrules=True,
         # multicol_align='p{2cm}'
@@ -115,9 +148,15 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided
 if __name__ == '__main__':
 
     # output directory
-    if not os.path.exists('tables'):
-        os.mkdir('tables')
+    if not os.path.exists('assets'):
+        os.mkdir('assets')
+
+    # convergence plots
+    convergence_plots()
 
     # UCI tables
     generate_uci_tables(normalized=False)
     generate_uci_tables(normalized=True)
+
+    # show plots
+    plt.show()
