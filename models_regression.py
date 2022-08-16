@@ -198,8 +198,9 @@ class VariationalGammaNormal(Regression):
 
         # precision prior
         self.empirical_bayes = empirical_bayes
-        self.sq_err_scale = sq_err_scale
-        self.p_lambda = tfpd.Independent(tfpd.Gamma([2.0] * dim_y, [1.0] * dim_y), 1)
+        self.sq_err_scale = tf.Variable(sq_err_scale, trainable=False)
+        self.a = tf.Variable([2.0] * dim_y, trainable=False)
+        self.b = tf.Variable([1.0] * dim_y, trainable=False)
 
         # parameter networks
         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
@@ -227,13 +228,8 @@ class VariationalGammaNormal(Regression):
         # empirical bayes prior
         if self.empirical_bayes:
             sq_errors = (self.whiten_targets(y) - self.mu(x)) ** 2
-            a = tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2
-            b = (a - 1) * tf.reduce_mean(sq_errors, axis=0) / self.sq_err_scale
-            p_lambda = tfpd.Independent(tfpd.Gamma(a, b), 1)
-
-        # standard prior
-        else:
-            p_lambda = self.p_lambda
+            self.a.assign(tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2)
+            self.b.assign((self.a - 1) * tf.reduce_mean(sq_errors, axis=0))
 
         with tf.GradientTape() as tape:
 
@@ -248,6 +244,7 @@ class VariationalGammaNormal(Regression):
             expected_lambda = alpha / beta
             expected_ln_lambda = tf.math.digamma(alpha) - tf.math.log(beta)
             ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - (y - mu) ** 2 * expected_lambda)
+            p_lambda = tfpd.Independent(tfpd.Gamma(self.a, self.b / self.sq_err_scale), 1)
             loss = -tf.reduce_mean(tf.reduce_sum(ell, axis=-1) - qp.kl_divergence(p_lambda))
 
         # update model parameters
