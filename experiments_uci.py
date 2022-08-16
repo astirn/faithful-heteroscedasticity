@@ -25,7 +25,7 @@ parser.add_argument('--replace', action='store_true', default=False, help='wheth
 args = parser.parse_args()
 
 # make experimental directory base path
-exp_path = os.path.join('experiments', 'regression', args.dataset)
+exp_path = os.path.join('experiments', 'uci', args.dataset)
 os.makedirs(exp_path, exist_ok=True)
 
 # models and configurations to run

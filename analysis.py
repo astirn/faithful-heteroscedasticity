@@ -88,14 +88,14 @@ def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
 
 
 def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided'):
-    if not os.path.exists(os.path.join('experiments', 'regression')):
+    if not os.path.exists(os.path.join('experiments', 'uci')):
         return
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
     df_ece = pd.DataFrame()
-    for dataset in os.listdir(os.path.join('experiments', 'regression')):
-        measurements_file = os.path.join('experiments', 'regression', dataset, 'measurements.pkl')
+    for dataset in os.listdir(os.path.join('experiments', 'uci')):
+        measurements_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
             df_measurements = pd.read_pickle(measurements_file).sort_index()
             df_measurements = df_measurements[df_measurements['normalized'] == normalized]
