@@ -74,7 +74,8 @@ class UnitVarianceNormal(Regression, ABC):
         else:
             self.f_trunk = f_trunk(dim_x)
             dim_latent = self.f_trunk.output_shape[1:]
-            self.f_mean = f_param_net(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            assert len(dim_latent) == 1
+            self.f_mean = f_param_net(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
@@ -113,8 +114,9 @@ class HeteroscedasticNormal(Regression, ABC):
         else:
             self.f_trunk = f_trunk(dim_x)
             dim_latent = self.f_trunk.output_shape[1:]
-            self.f_mean = f_param_net(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-            self.f_scale = f_param_net(d_in=dim_latent, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+            assert len(dim_latent) == 1
+            self.f_mean = f_param_net(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_scale = f_param_net(d_in=dim_latent[0], d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
