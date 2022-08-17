@@ -1,6 +1,8 @@
 import argparse
+import json
 import os
 import pickle
+import zlib
 
 import models_regression as models
 import numpy as np
@@ -29,11 +31,15 @@ exp_path = os.path.join('experiments', 'uci', args.dataset)
 os.makedirs(exp_path, exist_ok=True)
 
 # models and configurations to run
-nn_kwargs = {'n_hidden': 2, 'd_hidden': 50, 'f_hidden': 'elu'}
+nn_kwargs_1 = {'d_hidden': (50,), 'f_hidden': 'elu'}
+nn_kwargs_2 = {'d_hidden': (50, 50), 'f_hidden': 'elu'}
 models_and_configs = [
-    {'model': models.UnitVarianceNormal, 'config': dict()},
-    {'model': models.HeteroscedasticNormal, 'config': dict()},
-    {'model': models.FaithfulHeteroscedasticNormal, 'config': dict()},
+    {'model': models.UnitVarianceNormal, 'config': {**dict(), **nn_kwargs_1}},
+    {'model': models.UnitVarianceNormal, 'config': {**dict(), **nn_kwargs_2}},
+    {'model': models.HeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_1}},
+    {'model': models.HeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_2}},
+    {'model': models.FaithfulHeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_1}},
+    {'model': models.FaithfulHeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_2}},
 ]
 
 # create or load folds
@@ -73,20 +79,22 @@ for fold in np.unique(data['split']):
             model = model_and_config['model'](
                 dim_x=x_train.shape[1],
                 dim_y=y_train.shape[1],
-                **model_and_config['config'], **nn_kwargs
+                f_param_net=models.param_net,
+                **model_and_config['config']
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
             model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
-            # determine directory where to save model
-            model_dir = os.path.join(trial_path, model.name)
+            # determine where to save model
+            config_dir = str(zlib.crc32(json.dumps(model_and_config['config']).encode('utf-8')))
+            save_path = os.path.join(trial_path, model.name, config_dir)
 
             # if we are set to resume and the model directory already contains a saved model, load it
-            if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
+            if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
                 print(model.name + ' exists. Loading...')
                 checkpoint = tf.train.Checkpoint(model)
-                checkpoint.restore(os.path.join(model_dir, 'best_checkpoint')).expect_partial()
-                with open(os.path.join(model_dir, 'hist.pkl'), 'rb') as f:
+                checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
+                with open(os.path.join(save_path, 'hist.pkl'), 'rb') as f:
                     history = pickle.load(f)
 
             # otherwise, train and save the model
@@ -96,15 +104,14 @@ for fold in np.unique(data['split']):
                                  validation_data=(x_valid, z_normalization.normalize_targets(y_valid)),
                                  validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
                                  callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=100)])
-                model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
+                model.save_weights(os.path.join(save_path, 'best_checkpoint'))
                 history = hist.history
-                with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:
+                with open(os.path.join(save_path, 'hist.pkl'), 'wb') as f:
                     pickle.dump(history, f)
 
             # index for this model and configuration
             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
             index = {'Model': model_name}
-            index.update(nn_kwargs)
             index.update(model_and_config['config'])
             index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
 
