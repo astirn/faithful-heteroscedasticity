@@ -15,14 +15,14 @@ for gpu in tf.config.list_physical_devices('GPU'):
 tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU')[0], 'GPU')
 
 
-def param_net(d_in, d_out, n_hidden=1, d_hidden=50, f_hidden='elu', rate=0.0, f_out=None, name=None, **kwargs):
+def param_net(*, d_in, d_out, d_hidden=(50, ), f_hidden='elu', rate=0.0, f_out=None, name=None, **kwargs):
     assert isinstance(d_in, int) and d_in > 0
-    assert isinstance(d_hidden, int) and d_hidden > 0
+    assert isinstance(d_hidden, (list, tuple)) and all(isinstance(d, int) for d in d_hidden)
     assert isinstance(d_out, int) and d_out > 0
     nn = tf.keras.Sequential(name=name)
     nn.add(tf.keras.layers.InputLayer(d_in))
-    for _ in range(n_hidden):
-        nn.add(tf.keras.layers.Dense(d_hidden, f_hidden))
+    for d in d_hidden:
+        nn.add(tf.keras.layers.Dense(d, f_hidden))
         nn.add(tf.keras.layers.Dropout(rate))
     nn.add(tf.keras.layers.Dense(d_out, f_out))
     return nn
@@ -65,14 +65,20 @@ class Regression(tf.keras.Model):
 
 class UnitVarianceNormal(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, **kwargs):
+    def __init__(self, dim_x, dim_y, f_param_net, f_trunk=None, **kwargs):
         Regression.__init__(self, name='UnitVarianceNormal', **kwargs)
 
-        # parameter networks
-        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.f_mean = f_param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        else:
+            self.f_trunk = f_trunk(dim_x)
+            dim_latent = self.f_trunk.output_shape[1:]
+            self.f_mean = f_param_net(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
-        return {'mean': self.f_mean(x, **kwargs)}
+        z = self.f_trunk(x, **kwargs)
+        return {'mean': self.f_mean(z, **kwargs)}
 
     def predictive_distribution(self, *, x=None, mean=None):
         if mean is None:
@@ -97,15 +103,22 @@ class UnitVarianceNormal(Regression, ABC):
 
 class HeteroscedasticNormal(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, **kwargs):
+    def __init__(self, dim_x, dim_y, f_param_net, f_trunk=None, **kwargs):
         Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
 
-        # parameter networks
-        self.f_mean = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-        self.f_scale = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.f_mean = f_param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_scale = f_param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+        else:
+            self.f_trunk = f_trunk(dim_x)
+            dim_latent = self.f_trunk.output_shape[1:]
+            self.f_mean = f_param_net(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_scale = f_param_net(d_in=dim_latent, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
-        return {'mean': self.f_mean(x, **kwargs), 'std': self.f_scale(x, **kwargs)}
+        z = self.f_trunk(x, **kwargs)
+        return {'mean': self.f_mean(z, **kwargs), 'std': self.f_scale(z, **kwargs)}
 
     def predictive_distribution(self, *, x=None, mean=None, std=None):
         if mean is None or std is None:
@@ -130,127 +143,19 @@ class HeteroscedasticNormal(Regression, ABC):
 
 class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
 
-    def __init__(self, dim_x, dim_y, **kwargs):
-        HeteroscedasticNormal.__init__(self, dim_x, dim_y, name='FaithfulHeteroscedasticNormal', **kwargs)
+    def __init__(self, dim_x, dim_y, f_param_net, f_trunk=None, **kwargs):
+        HeteroscedasticNormal.__init__(self, dim_x, dim_y, f_param_net, f_trunk, name='FaithfulHeteroscedasticNormal', **kwargs)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
-            params = self.call(x, training=True)
-            py_loc = tfpd.Independent(tfpd.Normal(loc=params['mean'], scale=1.0),
-                                      reinterpreted_batch_ndims=1)
-            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(params['mean']), scale=params['std']),
-                                      reinterpreted_batch_ndims=1)
+            z = self.f_trunk(x, training=True)
+            mean = self.f_mean(z, training=True)
+            std = self.f_scale(tf.stop_gradient(z), training=True)
+            py_loc = tfpd.Independent(tfpd.Normal(loc=mean, scale=1.0), reinterpreted_batch_ndims=1)
+            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(mean), scale=std), reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return params
-
-
-class Student(Regression):
-
-    def __init__(self, dim_x, dim_y, **kwargs):
-        Regression.__init__(self, name='Student', **kwargs)
-
-        # parameter networks
-        self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
-        self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
-        self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
-
-    def call(self, x, **kwargs):
-        return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
-
-    def predictive_distribution(self, *args):
-        mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
-        loc = self.de_whiten_mean(mu)
-        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        return tfpd.StudentT(df=2 * alpha, loc=loc, scale=scale)
-
-    def update_metrics(self, y, mu, alpha, beta):
-        py_x = self.predictive_distribution(mu, alpha, beta)
-        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        prob_errors = tfpd.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / scale)
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
-        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
-
-    def optimization_step(self, x, y):
-
-        with tf.GradientTape() as tape:
-
-            # amortized parameter networks
-            mu, alpha, beta = self.call(x, training=True)
-
-            # minimize negative log likelihood
-            py_x = tfpd.StudentT(df=2 * alpha, loc=mu, scale=tf.sqrt(beta / alpha))
-            ll = tf.reduce_sum(py_x.log_prob(self.whiten_targets(y)), axis=-1)
-            loss = tf.reduce_mean(-ll)
-
-        # update model parameters
-        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-
-        return mu, alpha, beta
-
-
-class VariationalGammaNormal(Regression):
-
-    def __init__(self, dim_x, dim_y, empirical_bayes, sq_err_scale=None, **kwargs):
-        assert not empirical_bayes or sq_err_scale is not None
-        name = 'VariationalGammaNormal' + ('-EB-{:.2f}'.format(sq_err_scale) if empirical_bayes else '')
-        Regression.__init__(self, name=name, **kwargs)
-
-        # precision prior
-        self.empirical_bayes = empirical_bayes
-        self.sq_err_scale = tf.Variable(sq_err_scale, trainable=False)
-        self.a = tf.Variable([2.0] * dim_y, trainable=False)
-        self.b = tf.Variable([1.0] * dim_y, trainable=False)
-
-        # parameter networks
-        self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
-        self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
-        self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
-
-    def call(self, x, **kwargs):
-        return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
-
-    def predictive_distribution(self, *args):
-        mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
-        loc = self.de_whiten_mean(mu)
-        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        return tfpd.StudentT(df=2 * alpha, loc=loc, scale=scale)
-
-    def update_metrics(self, y, mu, alpha, beta):
-        py_x = self.predictive_distribution(mu, alpha, beta)
-        scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
-        prob_errors = tfpd.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / scale)
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
-        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
-
-    def optimization_step(self, x, y):
-
-        # empirical bayes prior
-        if self.empirical_bayes:
-            sq_errors = (self.whiten_targets(y) - self.mu(x)) ** 2
-            self.a.assign(tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2)
-            self.b.assign((self.a - 1) * tf.reduce_mean(sq_errors, axis=0))
-
-        with tf.GradientTape() as tape:
-
-            # amortized parameter networks
-            mu, alpha, beta = self.call(x, training=True)
-
-            # variational family
-            qp = tfpd.Independent(tfpd.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
-
-            # use negative evidence lower bound as minimization objective
-            y = self.whiten_targets(y)
-            expected_lambda = alpha / beta
-            expected_ln_lambda = tf.math.digamma(alpha) - tf.math.log(beta)
-            ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - (y - mu) ** 2 * expected_lambda)
-            p_lambda = tfpd.Independent(tfpd.Gamma(self.a, self.b / self.sq_err_scale), 1)
-            loss = -tf.reduce_mean(tf.reduce_sum(ell, axis=-1) - qp.kl_divergence(p_lambda))
-
-        # update model parameters
-        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-
-        return mu, alpha, beta
+        return {'mean': mean, 'std': std}
 
 
 def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean, predicted_std, title):
@@ -306,9 +211,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--model', type=str, default='HeteroscedasticNormal', help='which model to use')
-    parser.add_argument('--optimization', type=str, default='first-order', help='for Normal, MC-Dropout, DeepEnsemble')
-    parser.add_argument('--empirical_bayes', action='store_true', default=False, help='for Variational Gamma-Normal')
-    parser.add_argument('--sq_err_scale', type=float, default=1.0, help='for Variational Gamma-Normal')
     args = parser.parse_args()
 
     # load data
@@ -326,14 +228,7 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     # declare model instance
-    mdl = MODEL(
-        dim_x=toy_data['x_train'].shape[1],
-        dim_y=toy_data['y_train'].shape[1],
-        optimization=args.optimization,  # for Normal
-        num_mc_samples=20,  # for MC-Dropout
-        empirical_bayes=args.empirical_bayes,  # for Variational Gamma-Normal
-        sq_err_scale=args.sq_err_scale,  # for Variational Gamma-Normal
-    )
+    mdl = MODEL(dim_x=toy_data['x_train'].shape[1], dim_y=toy_data['y_train'].shape[1], f_param_net=param_net)
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
@@ -345,7 +240,7 @@ if __name__ == '__main__':
 
     # train model
     hist = mdl.fit(x=toy_data['x_train'], y=toy_data['y_train'],
-                   batch_size=toy_data['x_train'].shape[0], epochs=int(3e3), verbose=0,
+                   batch_size=toy_data['x_train'].shape[0], epochs=int(10e3), verbose=0,
                    callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model

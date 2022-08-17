@@ -95,3 +95,113 @@
 #     MODEL = MonteCarloDropout
 # elif args.model == 'DeepEnsemble':
 #     MODEL = DeepEnsemble
+
+# from models_regression import Regression
+#
+# class Student(Regression):
+#
+#     def __init__(self, dim_x, dim_y, **kwargs):
+#         Regression.__init__(self, name='Student', **kwargs)
+#
+#         # parameter networks
+#         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+#         self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
+#         self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
+#
+#     def call(self, x, **kwargs):
+#         return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
+#
+#     def predictive_distribution(self, *args):
+#         mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
+#         loc = self.de_whiten_mean(mu)
+#         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+#         return tfpd.StudentT(df=2 * alpha, loc=loc, scale=scale)
+#
+#     def update_metrics(self, y, mu, alpha, beta):
+#         py_x = self.predictive_distribution(mu, alpha, beta)
+#         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+#         prob_errors = tfpd.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / scale)
+#         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+#         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
+#
+#     def optimization_step(self, x, y):
+#
+#         with tf.GradientTape() as tape:
+#
+#             # amortized parameter networks
+#             mu, alpha, beta = self.call(x, training=True)
+#
+#             # minimize negative log likelihood
+#             py_x = tfpd.StudentT(df=2 * alpha, loc=mu, scale=tf.sqrt(beta / alpha))
+#             ll = tf.reduce_sum(py_x.log_prob(self.whiten_targets(y)), axis=-1)
+#             loss = tf.reduce_mean(-ll)
+#
+#         # update model parameters
+#         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+#
+#         return mu, alpha, beta
+#
+#
+# class VariationalGammaNormal(Regression):
+#
+#     def __init__(self, dim_x, dim_y, empirical_bayes, sq_err_scale=None, **kwargs):
+#         assert not empirical_bayes or sq_err_scale is not None
+#         name = 'VariationalGammaNormal' + ('-EB-{:.2f}'.format(sq_err_scale) if empirical_bayes else '')
+#         Regression.__init__(self, name=name, **kwargs)
+#
+#         # precision prior
+#         self.empirical_bayes = empirical_bayes
+#         self.sq_err_scale = tf.Variable(sq_err_scale, trainable=False)
+#         self.a = tf.Variable([2.0] * dim_y, trainable=False)
+#         self.b = tf.Variable([1.0] * dim_y, trainable=False)
+#
+#         # parameter networks
+#         self.mu = param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='mu', **kwargs)
+#         self.alpha = param_net(d_in=dim_x, d_out=dim_y, f_out=lambda x: 1 + tf.nn.softplus(x), name='alpha', **kwargs)
+#         self.beta = param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='beta', **kwargs)
+#
+#     def call(self, x, **kwargs):
+#         return self.mu(x, **kwargs), self.alpha(x, **kwargs), self.beta(x, **kwargs)
+#
+#     def predictive_distribution(self, *args):
+#         mu, alpha, beta = self.call(args[0], training=False) if len(args) == 1 else args
+#         loc = self.de_whiten_mean(mu)
+#         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+#         return tfpd.StudentT(df=2 * alpha, loc=loc, scale=scale)
+#
+#     def update_metrics(self, y, mu, alpha, beta):
+#         py_x = self.predictive_distribution(mu, alpha, beta)
+#         scale = self.de_whiten_stddev(tf.sqrt(beta / alpha))
+#         prob_errors = tfpd.StudentT(df=2 * alpha, loc=0, scale=1).cdf((y - py_x.mean()) / scale)
+#         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+#         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
+#
+#     def optimization_step(self, x, y):
+#
+#         # empirical bayes prior
+#         if self.empirical_bayes:
+#             sq_errors = (self.whiten_targets(y) - self.mu(x)) ** 2
+#             self.a.assign(tf.reduce_mean(sq_errors, axis=0) ** 2 / tf.math.reduce_variance(sq_errors, axis=0) + 2)
+#             self.b.assign((self.a - 1) * tf.reduce_mean(sq_errors, axis=0))
+#
+#         with tf.GradientTape() as tape:
+#
+#             # amortized parameter networks
+#             mu, alpha, beta = self.call(x, training=True)
+#
+#             # variational family
+#             qp = tfpd.Independent(tfpd.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
+#
+#             # use negative evidence lower bound as minimization objective
+#             y = self.whiten_targets(y)
+#             expected_lambda = alpha / beta
+#             expected_ln_lambda = tf.math.digamma(alpha) - tf.math.log(beta)
+#             ell = 0.5 * (expected_ln_lambda - tf.math.log(2 * np.pi) - (y - mu) ** 2 * expected_lambda)
+#             p_lambda = tfpd.Independent(tfpd.Gamma(self.a, self.b / self.sq_err_scale), 1)
+#             loss = -tf.reduce_mean(tf.reduce_sum(ell, axis=-1) - qp.kl_divergence(p_lambda))
+#
+#         # update model parameters
+#         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+#
+#         return mu, alpha, beta
+#
