@@ -242,7 +242,7 @@ if __name__ == '__main__':
 
     # train model
     hist = mdl.fit(x=toy_data['x_train'], y=toy_data['y_train'],
-                   batch_size=toy_data['x_train'].shape[0], epochs=int(10e3), verbose=0,
+                   batch_size=toy_data['x_train'].shape[0], epochs=int(20e3), verbose=0,
                    callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
