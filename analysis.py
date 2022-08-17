@@ -61,18 +61,11 @@ def convergence_plots():
 
 def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
 
-    # get column names
-    if isinstance(df.index, pd.Index):
-        columns = df.index.name
-    elif isinstance(df.index, pd.MultiIndex):
-        columns = df.index.names
-    else:
-        raise NotImplementedError
-
     # rearrange table for LaTeX
+    df = df.set_index('Model')
     df_latex = df.melt(id_vars=['Dataset'], value_vars=df.columns[1:], ignore_index=False)
     df_latex = df_latex.reset_index()
-    df_latex = df_latex.pivot(index='Dataset', columns=columns + ['variable'], values='value')
+    df_latex = df_latex.pivot(index='Dataset', columns=['Model', 'variable'], values='value')
     df_latex = pd.concat([df_latex.loc[:, ('Unit Variance Normal', null_columns or slice(None))],
                           df_latex[['Heteroscedastic Normal']],
                           df_latex[['Faithful Heteroscedastic Normal']]], axis=1)
@@ -105,11 +98,6 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided
                 if len(df_measurements.index.unique(level)) == 1:
                     df_measurements.set_index(df_measurements.index.droplevel(level), inplace=True)
 
-            # null hypothesis values
-            null_index = ['Unit Variance Normal']
-            null_squared_errors = df_measurements.loc[null_index, 'squared errors']
-            # y_null, y_hat_null = get_targets_and_predictions(df_predictions, null_index)
-
             # loop over alternatives
             for index in df_measurements.index.unique():
                 if isinstance(index, tuple):
@@ -119,11 +107,13 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided
 
                 # MSE
                 squared_errors = df_measurements.loc[index, 'squared errors']
+                null_index = index.set_levels(['Unit Variance Normal'], level='Model')
+                null_squared_errors = df_measurements.loc[null_index, 'squared errors']
                 mse = squared_errors.mean()
                 p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
                 # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
                 mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
-                p = '$H_0' if list(index) == null_index else '{:.2g}'.format(p)
+                p = '$H_0' if index == null_index else '{:.2g}'.format(p)
                 df_mse_add = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
                 df_mse = pd.concat([df_mse, df_mse_add])
 
@@ -142,9 +132,18 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided
                 df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    suffix = ('_normalized' if normalized else '')
-    print_uci_table(df_mse, file_name='regression_uci_mse' + suffix + '.tex', null_columns=['MSE'])
-    print_uci_table(df_ece, file_name='regression_uci_ece' + suffix + '.tex', highlight_min=True)
+    suffix = ('_normalized_' if normalized else '_')
+    df_mse = df_mse.reset_index().set_index(df_mse.index.names[1:])
+    df_ece = df_ece.reset_index().set_index(df_ece.index.names[1:])
+    assert set(df_mse.index.unique()) == set(df_ece.index.unique())
+    for i, index in enumerate(df_mse.index.unique()):
+        config_str = ''
+        for level in range(df_mse.index.nlevels):
+            config_str += df_mse.index.names[level] + '_'
+            index_str = index[level] if df_mse.index.nlevels > 1 else index
+            config_str += ''.join(c for c in str(index_str) if c.isalnum() or c.isspace()).replace(' ', '_')
+        print_uci_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', null_columns=['MSE'])
+        print_uci_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
 
 
 if __name__ == '__main__':
