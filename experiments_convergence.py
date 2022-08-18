@@ -48,11 +48,12 @@ full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                    metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 full_model.f_mean.set_weights(mean_model.get_weights())
 
-# initialize faithful heteroscedastic model such that it starts with the same mean network initialization
+# initialize faithful heteroscedastic model such that it starts with the same mean/std network initializations
 faith_model = models.FaithfulHeteroscedasticNormal(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
 faith_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                     metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 faith_model.f_mean.set_weights(mean_model.get_weights())
+faith_model.f_scale.set_weights(full_model.f_scale.get_weights())
 
 # loop over the epochs
 metrics = pd.DataFrame()
