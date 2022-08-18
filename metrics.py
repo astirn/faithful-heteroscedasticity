@@ -2,8 +2,8 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 
-def pack_predictor_values(mean, ll, prob_errors):
-    return tf.concat([mean, ll, prob_errors], axis=-1)
+def pack_predictor_values(mean, ll, cdf):
+    return tf.concat([mean, ll, cdf], axis=-1)
 
 
 def unpack_predictor_values(predictor_values, request):
@@ -12,7 +12,7 @@ def unpack_predictor_values(predictor_values, request):
         return predictor_values[0]
     elif request == 'll':
         return tf.keras.layers.Flatten()(predictor_values[1])
-    elif request == 'prob_errors':
+    elif request == 'cdf':
         return tf.keras.layers.Flatten()(predictor_values[2])
     else:
         raise NotImplementedError
@@ -70,9 +70,9 @@ class ExpectedCalibrationError(Mean):
         self.bin_counts = [self.add_weight('count_{:d}'.format(i), initializer='zeros') for i in range(num_bins)]
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        prob_errors = tf.cast(unpack_predictor_values(y_pred, 'prob_errors'), self._dtype)
-        prob_errors = tf.reshape(prob_errors, [-1])
-        sum_values = tf.split(tfp.stats.histogram(prob_errors, self.edges), len(self.bin_counts))
+        cdf = tf.cast(unpack_predictor_values(y_pred, 'cdf'), self._dtype)
+        cdf = tf.reshape(cdf, [-1])
+        sum_values = tf.split(tfp.stats.histogram(cdf, self.edges), len(self.bin_counts))
         sum_values = [tf.squeeze(x) for x in sum_values]
         with tf.control_dependencies(sum_values):
             for i, bin_count in enumerate(self.bin_counts):

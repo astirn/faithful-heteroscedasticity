@@ -89,8 +89,7 @@ class UnitVarianceNormal(Regression, ABC):
 
     def update_metrics(self, y, mean):
         py_x = self.predictive_distribution(mean=mean)
-        prob_errors = tfpd.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), py_x.cdf(y))
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def optimization_step(self, x, y):
@@ -130,8 +129,7 @@ class HeteroscedasticNormal(Regression, ABC):
 
     def update_metrics(self, y, mean, std):
         py_x = self.predictive_distribution(mean=mean, std=std)
-        prob_errors = tfpd.Normal(0, 1).cdf((y - py_x.mean()) / py_x.stddev())
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), prob_errors)
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), py_x.cdf(y))
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def optimization_step(self, x, y):
