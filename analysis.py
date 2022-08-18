@@ -9,7 +9,6 @@ from matplotlib import pyplot as plt
 
 
 def convergence_plots():
-    # necessary files
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
     metrics_file = os.path.join('experiments', 'convergence', 'metrics.pkl')
     measurements_file = os.path.join('experiments', 'convergence', 'measurements.pkl')
@@ -59,7 +58,38 @@ def convergence_plots():
     fig_convergence.savefig(os.path.join('assets', 'toy_convergence.pdf'))
 
 
-def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
+def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+
+    # MSE
+    squared_errors = df_measurements.loc[index, 'squared errors']
+    null_index = 'Unit Variance Normal'
+    if isinstance(index, pd.MultiIndex):
+        null_index = index.set_levels([null_index], level='Model')
+    null_squared_errors = df_measurements.loc[null_index, 'squared errors']
+    mse = squared_errors.mean()
+    p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
+    # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
+    mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
+    p = '$H_0$' if index == null_index else '{:.2g}'.format(p)
+    df_mse = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
+
+    # ECE
+    cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
+    p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
+    if ece_method == 'one-sided':
+        p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
+        ece = '{:.2g}'.format(np.sum((p - p_hat) ** 2))
+    elif ece_method == 'two-sided':
+        p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
+        ece = '{:.2g}'.format(np.sum((1 / ece_bins - np.array(p_hat)) ** 2))
+    else:
+        raise NotImplementedError
+    df_ece = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
+
+    return df_mse, df_ece
+
+
+def print_table(df, file_name, null_columns=None, highlight_min=False):
 
     # rearrange table for LaTeX
     df = df.set_index('Model')
@@ -80,7 +110,7 @@ def print_uci_table(df, file_name, null_columns=None, highlight_min=False):
     )
 
 
-def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+def generate_uci_tables(normalized):
     if not os.path.exists(os.path.join('experiments', 'uci')):
         return
 
@@ -98,37 +128,16 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided
                 if len(df_measurements.index.unique(level)) == 1:
                     df_measurements.set_index(df_measurements.index.droplevel(level), inplace=True)
 
-            # loop over alternatives
+            # loop over models and configurations
             for index in df_measurements.index.unique():
                 if isinstance(index, tuple):
                     index = pd.MultiIndex.from_tuples(tuples=[index], names=df_measurements.index.names)
                 else:
                     index = pd.Index(data=[index], name=df_measurements.index.names)
 
-                # MSE
-                squared_errors = df_measurements.loc[index, 'squared errors']
-                null_index = index.set_levels(['Unit Variance Normal'], level='Model')
-                null_squared_errors = df_measurements.loc[null_index, 'squared errors']
-                mse = squared_errors.mean()
-                p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
-                # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
-                mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
-                p = '$H_0' if index == null_index else '{:.2g}'.format(p)
-                df_mse_add = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
+                # analyze performance
+                df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
                 df_mse = pd.concat([df_mse, df_mse_add])
-
-                # ECE
-                cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
-                p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-                if ece_method == 'one-sided':
-                    p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
-                    ece = '{:.2g}'.format(np.sum((p - p_hat) ** 2))
-                elif ece_method == 'two-sided':
-                    p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
-                    ece = '{:.2g}'.format(np.sum((1 / ece_bins - np.array(p_hat)) ** 2))
-                else:
-                    raise NotImplementedError
-                df_ece_add = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
                 df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
@@ -142,8 +151,32 @@ def generate_uci_tables(normalized, alpha=0.1, ece_bins=5, ece_method='one-sided
             config_str += df_mse.index.names[level] + '_'
             index_str = index[level] if df_mse.index.nlevels > 1 else index
             config_str += ''.join(c for c in str(index_str) if c.isalnum() or c.isspace()).replace(' ', '_')
-        print_uci_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', null_columns=['MSE'])
-        print_uci_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
+        print_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', null_columns=['MSE'])
+        print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
+
+
+def generate_crispr_tables():
+    if not os.path.exists(os.path.join('experiments', 'crispr')):
+        return
+
+    # loop over datasets with predictions
+    df_mse = pd.DataFrame()
+    df_ece = pd.DataFrame()
+    for dataset in os.listdir(os.path.join('experiments', 'crispr')):
+        measurements_file = os.path.join('experiments', 'crispr', dataset, 'measurements.pkl')
+        if os.path.exists(measurements_file):
+            df_measurements = pd.read_pickle(measurements_file).sort_index()
+
+            # analyze each model's performance
+            for index in df_measurements.index.unique():
+                index = pd.Index(data=[index], name=df_measurements.index.names)
+                df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
+                df_mse = pd.concat([df_mse, df_mse_add])
+                df_ece = pd.concat([df_ece, df_ece_add])
+
+    # print tables
+    print_table(df_mse.reset_index(), file_name='crispr_mse.tex', null_columns=['MSE'])
+    print_table(df_ece.reset_index(), file_name='crispr_ece.tex', highlight_min=True)
 
 
 if __name__ == '__main__':
@@ -158,6 +191,9 @@ if __name__ == '__main__':
     # UCI tables
     generate_uci_tables(normalized=False)
     generate_uci_tables(normalized=True)
+
+    # CRISPR tables
+    generate_crispr_tables()
 
     # show plots
     plt.show()

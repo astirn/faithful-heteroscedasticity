@@ -31,6 +31,7 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
+    parser.add_argument('--dataset', type=str, default='junction', help='which dataset to use')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--num_folds', type=int, default=10, help='number of pre-validation folds')
@@ -38,11 +39,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # make experimental directory base path
-    exp_path = os.path.join('experiments', 'crispr')
+    exp_path = os.path.join('experiments', 'crispr', args.dataset)
     os.makedirs(exp_path, exist_ok=True)
 
     # load data and sample fold assignments
-    with open(os.path.join('data', 'junction', 'data.pkl'), 'rb') as f:
+    with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
         x, y, nt_lut = pickle.load(f).values()
     x = tf.one_hot(x, depth=4)
     y = tf.expand_dims(y, axis=1)

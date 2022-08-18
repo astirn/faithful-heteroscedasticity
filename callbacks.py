@@ -4,7 +4,7 @@ import tensorflow as tf
 
 class RegressionCallback(tf.keras.callbacks.Callback):
 
-    def __init__(self, validation_freq=0, early_stop_patience=0):
+    def __init__(self, validation_freq=1, early_stop_patience=0):
         super().__init__()
 
         # configure and initialize
