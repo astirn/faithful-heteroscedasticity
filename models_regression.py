@@ -65,17 +65,17 @@ class Regression(tf.keras.Model):
 
 class UnitVarianceNormal(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param_net, f_trunk=None, **kwargs):
+    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
         Regression.__init__(self, name='UnitVarianceNormal', **kwargs)
 
         if f_trunk is None:
             self.f_trunk = lambda x, **k: x
-            self.f_mean = f_param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_mean = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
         else:
             self.f_trunk = f_trunk(dim_x)
             dim_latent = self.f_trunk.output_shape[1:]
             assert len(dim_latent) == 1
-            self.f_mean = f_param_net(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
@@ -104,19 +104,19 @@ class UnitVarianceNormal(Regression, ABC):
 
 class HeteroscedasticNormal(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param_net, f_trunk=None, **kwargs):
+    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
         Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
 
         if f_trunk is None:
             self.f_trunk = lambda x, **k: x
-            self.f_mean = f_param_net(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-            self.f_scale = f_param_net(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+            self.f_mean = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_scale = f_param(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
         else:
             self.f_trunk = f_trunk(dim_x)
             dim_latent = self.f_trunk.output_shape[1:]
             assert len(dim_latent) == 1
-            self.f_mean = f_param_net(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-            self.f_scale = f_param_net(d_in=dim_latent[0], d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+            self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_scale = f_param(d_in=dim_latent[0], d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
@@ -145,8 +145,8 @@ class HeteroscedasticNormal(Regression, ABC):
 
 class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param_net, f_trunk=None, **kwargs):
-        HeteroscedasticNormal.__init__(self, dim_x, dim_y, f_param_net, f_trunk, name='FaithfulHeteroscedasticNormal', **kwargs)
+    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
+        HeteroscedasticNormal.__init__(self, dim_x, dim_y, f_param, f_trunk, name='FaithfulHeteroscedasticNormal', **kwargs)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -212,7 +212,7 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--model', type=str, default='HeteroscedasticNormal', help='which model to use')
+    parser.add_argument('--model', type=str, default='FaithfulHeteroscedasticNormal', help='which model to use')
     args = parser.parse_args()
 
     # load data
@@ -230,7 +230,7 @@ if __name__ == '__main__':
         raise NotImplementedError
 
     # declare model instance
-    mdl = MODEL(dim_x=toy_data['x_train'].shape[1], dim_y=toy_data['y_train'].shape[1], f_param_net=param_net)
+    mdl = MODEL(dim_x=toy_data['x_train'].shape[1], dim_y=toy_data['y_train'].shape[1], f_param=param_net)
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)

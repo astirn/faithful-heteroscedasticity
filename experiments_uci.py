@@ -79,7 +79,7 @@ for fold in np.unique(data['split']):
             model = model_and_config['model'](
                 dim_x=x_train.shape[1],
                 dim_y=y_train.shape[1],
-                f_param_net=models.param_net,
+                f_param=models.param_net,
                 **model_and_config['config']
             )
             optimizer = tf.keras.optimizers.Adam(1e-3)
