@@ -4,6 +4,7 @@ import pickle
 import shap
 
 import models_regression as models
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 
@@ -36,24 +37,36 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--num_folds', type=int, default=10, help='number of pre-validation folds')
     parser.add_argument('--seed', type=int, default=12345, help='number of trials per fold')
+    parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
     args = parser.parse_args()
 
-    # make experimental directory base path
+    # make experimental directory base path etc...
     exp_path = os.path.join('experiments', 'crispr', args.dataset)
     os.makedirs(exp_path, exist_ok=True)
+    folds_file = os.path.join(exp_path, 'folds.npy')
+    shap_file = os.path.join(exp_path, 'measurements.pkl')
 
-    # load data and sample fold assignments
+    # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
         x, y, nt_lut = pickle.load(f).values()
     x = tf.one_hot(x, depth=4)
     y = tf.expand_dims(y, axis=1)
-    folds = tf.random.stateless_categorical(tf.ones([x.shape[0], args.num_folds]), num_samples=1, seed=2 * [args.seed])
-    folds = tf.squeeze(folds)
+
+    # create or load fold assignments
+    np.random.seed(args.seed)
+    if os.path.exists(folds_file):
+        folds = np.load(folds_file)
+    else:
+        folds = np.random.choice(args.num_folds, size=x.shape[0]) + 1
+        np.save(folds_file, folds)
 
     # loop over validation folds
     measurements = pd.DataFrame()
-    for k in range(args.num_folds):
-        print('******************** Fold {:d}/{:d} ********************'.format(k + 1, args.num_folds))
+    shap = pd.read_pickle(shap_file) if os.path.exists(shap_file) else pd.DataFrame()
+    for k in range(1, args.num_folds + 1):
+        print('******************** Fold {:d}/{:d} ********************'.format(k, args.num_folds))
+        fold_path = os.path.join(exp_path, 'fold_' + str(k))
+        i_train, i_valid = tf.not_equal(folds, k), tf.equal(folds, k)
 
         # loop over models
         for mdl in [models.UnitVarianceNormal, models.HeteroscedasticNormal, models.FaithfulHeteroscedasticNormal]:
@@ -65,11 +78,21 @@ if __name__ == '__main__':
                           run_eagerly=args.debug,
                           metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
-            # fit model
-            i_train, i_valid = tf.not_equal(folds, k), tf.equal(folds, k)
-            hist = model.fit(x=x[i_train], y=y[i_train], validation_data=(x[i_valid], y[i_valid]),
-                             batch_size=args.batch_size, epochs=int(10e3), verbose=0,
-                             callbacks=[RegressionCallback(early_stop_patience=100)])
+            # determine where to save model
+            save_path = os.path.join(fold_path, model.name)
+
+            # if we are set to resume and the model directory already contains a saved model, load it
+            if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
+                print(model.name + ' exists. Loading...')
+                checkpoint = tf.train.Checkpoint(model)
+                checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
+
+            # otherwise, train and save the model
+            else:
+                hist = model.fit(x=x[i_train], y=y[i_train], validation_data=(x[i_valid], y[i_valid]),
+                                 batch_size=args.batch_size, epochs=int(10e3), verbose=0,
+                                 callbacks=[RegressionCallback(early_stop_patience=100)])
+                model.save_weights(os.path.join(save_path, 'best_checkpoint'))
 
             # index for this model
             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
@@ -91,5 +114,6 @@ if __name__ == '__main__':
             # e = shap.DeepExplainer(model, background)
             # shap_values = e.shap_values(x[i_valid].numpy())
 
-    # save performance measures
+    # save performance measures and SHAP values
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+    shap.to_pickle(shap_file)
