@@ -1,7 +1,6 @@
 import argparse
 import os
 import pickle
-import shap
 
 import models_regression as models
 import numpy as np
@@ -9,13 +8,15 @@ import pandas as pd
 import tensorflow as tf
 
 from callbacks import RegressionCallback
+from layers import SHAPyCat
 from metrics import RootMeanSquaredError, ExpectedCalibrationError
+from shap import DeepExplainer
 
 
 # sequence representation network
-def f_trunk(dim_x):
+def f_trunk(d_in):
     return tf.keras.Sequential(name='SequenceTrunk', layers=[
-        tf.keras.layers.InputLayer(dim_x),
+        tf.keras.layers.InputLayer(d_in),
         tf.keras.layers.Conv1D(filters=64, kernel_size=4, activation='relu', padding='same'),
         tf.keras.layers.Conv1D(filters=64, kernel_size=4, activation='relu', padding='same'),
         tf.keras.layers.MaxPool1D(pool_size=2, padding='same'),
@@ -44,7 +45,6 @@ if __name__ == '__main__':
     exp_path = os.path.join('experiments', 'crispr', args.dataset)
     os.makedirs(exp_path, exist_ok=True)
     folds_file = os.path.join(exp_path, 'folds.npy')
-    shap_file = os.path.join(exp_path, 'shap.pkl')
 
     # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     # loop over validation folds
     measurements = pd.DataFrame()
-    shap = pd.read_pickle(shap_file) if os.path.exists(shap_file) else pd.DataFrame()
+    shap = pd.DataFrame()
     for k in range(1, args.num_folds + 1):
         print('******************** Fold {:d}/{:d} ********************'.format(k, args.num_folds))
         fold_path = os.path.join(exp_path, 'fold_' + str(k))
@@ -107,12 +107,20 @@ if __name__ == '__main__':
                 'F(y)': cdf_y,
             }, index.repeat(len(y[i_valid])))])
 
-            # # compute SHAP values
-            # num_background_samples = min(5000, x[i_train].shape[0])
-            # background = tf.random.shuffle(x[i_train])[:num_background_samples]
-            # e = shap.DeepExplainer(model, background)
-            # shap_values = e.shap_values(x[i_valid].numpy())
+            # compute SHAP values
+            shap_model = tf.keras.Sequential(layers=[
+                tf.keras.layers.InputLayer(x.shape[1:]),
+                SHAPyCat(model, f_trunk, f_param)])
+            shap_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                               run_eagerly=args.debug,
+                               metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
+            e = DeepExplainer(shap_model, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
+            shap_values = e.shap_values(x[i_valid].numpy())
+            shap = pd.concat([shap, pd.DataFrame({
+                'squared errors': squared_errors,
+                'F(y)': cdf_y,
+            }, index.repeat(x[i_valid].shape[0]))])
 
     # save performance measures and SHAP values
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
-    shap.to_pickle(shap_file)
+    shap.to_pickle(os.path.join(exp_path, 'shap.pkl'))
