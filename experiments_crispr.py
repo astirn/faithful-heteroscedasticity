@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
-        x, y, nt_lut = pickle.load(f).values()
+        x, y, sequence = pickle.load(f).values()
     x = tf.one_hot(x, depth=4)
     y = tf.expand_dims(y, axis=1)
 
@@ -107,7 +107,7 @@ if __name__ == '__main__':
                 'F(y)': cdf_y,
             }, index.repeat(len(y[i_valid])))])
 
-            # convert model into a Sequential model because the SHAP package does not support otherwise
+            # copy model into a Sequential model because the SHAP package does not support otherwise
             shapy_cat = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(x.shape[1:]), SHAPyCat(model)])
             shapy_cat_params = tf.split(shapy_cat(x[i_valid]), num_or_size_splits=2, axis=-1)
             for i, key in enumerate(params.keys()):
@@ -115,15 +115,19 @@ if __name__ == '__main__':
                 assert min_abs_error == 0.0, 'bad SHAPy cat!'
 
             # compute SHAP values
-            e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
-            shap_values = e.shap_values(x[i_valid].numpy())
-            # shap = pd.concat([shap, pd.DataFrame({
-            #     'squared errors': squared_errors,
-            #     'F(y)': cdf_y,
-            # }, index.repeat(x[i_valid].shape[0]))])
+            # e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
+            # shap_values = e.shap_values(x[i_valid].numpy())
+            shap_dict = dict(sequence=sequence[i_valid].numpy().tolist())
+            # for nt, token in nt_lut.items():
+            #     shap_dict.update({'mean:' + nt: shap_values[0][..., token].tolist()})
+            #     shap_dict.update({'std:' + nt: shap_values[1][..., token].tolist()})
+            shap = pd.concat([shap, pd.DataFrame(shap_dict, index.repeat(x[i_valid].shape[0]))])
 
             # clear out memory
             tf.keras.backend.clear_session()
+
+    # convert all TensorFlow strings to Python strings
+    shap['sequence'] = shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
 
     # save performance measures and SHAP values
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
