@@ -107,19 +107,23 @@ if __name__ == '__main__':
                 'F(y)': cdf_y,
             }, index.repeat(len(y[i_valid])))])
 
+            # convert model into a Sequential model because the SHAP package does not support otherwise
+            shapy_cat = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(x.shape[1:]), SHAPyCat(model)])
+            shapy_cat_params = tf.split(shapy_cat(x[i_valid]), num_or_size_splits=2, axis=-1)
+            for i, key in enumerate(params.keys()):
+                min_abs_error = tf.reduce_min(tf.abs(shapy_cat_params[i] - params[key])).numpy()
+                assert min_abs_error == 0.0, 'bad SHAPy cat!'
+
             # compute SHAP values
-            shap_model = tf.keras.Sequential(layers=[
-                tf.keras.layers.InputLayer(x.shape[1:]),
-                SHAPyCat(model, f_trunk, f_param)])
-            shap_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
-                               run_eagerly=args.debug,
-                               metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
-            e = DeepExplainer(shap_model, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
+            e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
             shap_values = e.shap_values(x[i_valid].numpy())
-            shap = pd.concat([shap, pd.DataFrame({
-                'squared errors': squared_errors,
-                'F(y)': cdf_y,
-            }, index.repeat(x[i_valid].shape[0]))])
+            # shap = pd.concat([shap, pd.DataFrame({
+            #     'squared errors': squared_errors,
+            #     'F(y)': cdf_y,
+            # }, index.repeat(x[i_valid].shape[0]))])
+
+            # clear out memory
+            tf.keras.backend.clear_session()
 
     # save performance measures and SHAP values
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
