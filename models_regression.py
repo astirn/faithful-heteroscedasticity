@@ -62,6 +62,17 @@ class Regression(tf.keras.Model):
 
         return {m.name: m.result() for m in self.metrics}
 
+    def predictive_distribution(self, *, x=None, mean=None, std=None):
+        if mean is None or std is None:
+            assert x is not None
+            mean, std = self.call(x, training=False).values()
+        return tfpd.Normal(loc=mean, scale=std)
+
+    def update_metrics(self, y, mean, std):
+        py_x = self.predictive_distribution(mean=mean, std=std)
+        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), py_x.cdf(y))
+        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
+
 
 class UnitVarianceNormal(Regression, ABC):
 
@@ -78,19 +89,8 @@ class UnitVarianceNormal(Regression, ABC):
             self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
-        z = self.f_trunk(x, **kwargs)
-        return {'mean': self.f_mean(z, **kwargs)}
-
-    def predictive_distribution(self, *, x=None, mean=None):
-        if mean is None:
-            assert x is not None
-            mean, = self.call(x, training=False).values()
-        return tfpd.Normal(loc=mean, scale=1.0)
-
-    def update_metrics(self, y, mean):
-        py_x = self.predictive_distribution(mean=mean)
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), py_x.cdf(y))
-        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
+        mean = self.f_mean(self.f_trunk(x, **kwargs), **kwargs)
+        return {'mean': mean, 'std': tf.ones_like(mean)}
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -120,17 +120,6 @@ class HeteroscedasticNormal(Regression, ABC):
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
         return {'mean': self.f_mean(z, **kwargs), 'std': self.f_scale(z, **kwargs)}
-
-    def predictive_distribution(self, *, x=None, mean=None, std=None):
-        if mean is None or std is None:
-            assert x is not None
-            mean, std = self.call(x, training=False).values()
-        return tfpd.Normal(loc=mean, scale=std)
-
-    def update_metrics(self, y, mean, std):
-        py_x = self.predictive_distribution(mean=mean, std=std)
-        predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), py_x.cdf(y))
-        self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
