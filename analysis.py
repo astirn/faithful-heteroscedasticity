@@ -152,7 +152,8 @@ def generate_uci_tables(normalized):
             index_str = index[level] if df_mse.index.nlevels > 1 else index
             config_str += ''.join(c for c in str(index_str) if c.isalnum() or c.isspace()).replace(' ', '_')
         print_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', null_columns=['MSE'])
-        print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
+        if not normalized:
+            print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
 
 
 def generate_crispr_tables():
