@@ -44,7 +44,7 @@ if __name__ == '__main__':
     exp_path = os.path.join('experiments', 'crispr', args.dataset)
     os.makedirs(exp_path, exist_ok=True)
     folds_file = os.path.join(exp_path, 'folds.npy')
-    shap_file = os.path.join(exp_path, 'measurements.pkl')
+    shap_file = os.path.join(exp_path, 'shap.pkl')
 
     # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
@@ -103,7 +103,6 @@ if __name__ == '__main__':
             squared_errors = tf.reduce_sum((y[i_valid] - params['mean']) ** 2, axis=-1)
             cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y[i_valid]), axis=-1)
             measurements = pd.concat([measurements, pd.DataFrame({
-                'normalized': True,
                 'squared errors': squared_errors,
                 'F(y)': cdf_y,
             }, index.repeat(len(y[i_valid])))])
