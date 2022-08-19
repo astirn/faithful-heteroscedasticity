@@ -26,7 +26,7 @@ def convergence_plots():
     sns.lineplot(data=metrics.reset_index(), x='Epoch', y='RMSE', hue='Model', ax=ax[0])
     sns.lineplot(data=metrics.reset_index(), x='Epoch', y='ECE', hue='Model', ax=ax[1])
     plt.tight_layout()
-    fig_learning_curve.savefig(os.path.join('assets', 'toy_learning_curve.pdf'))
+    fig_learning_curve.savefig(os.path.join('results', 'toy_learning_curve.pdf'))
 
     # convergence figure
     models = measurements.index.unique(0)
@@ -55,7 +55,7 @@ def convergence_plots():
 
     # finalize and save figure
     plt.tight_layout()
-    fig_convergence.savefig(os.path.join('assets', 'toy_convergence.pdf'))
+    fig_convergence.savefig(os.path.join('results', 'toy_convergence.pdf'))
 
 
 def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
@@ -103,7 +103,7 @@ def print_table(df, file_name, null_columns=None, highlight_min=False):
     if highlight_min:
         style = style.highlight_min(props='bfseries:;', axis=1)
     style.to_latex(
-        buf=os.path.join('assets', file_name),
+        buf=os.path.join('results', file_name),
         column_format='l' + ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)]),
         hrules=True,
         # multicol_align='p{2cm}'
@@ -183,8 +183,8 @@ def generate_crispr_tables():
 if __name__ == '__main__':
 
     # output directory
-    if not os.path.exists('assets'):
-        os.mkdir('assets')
+    if not os.path.exists('results'):
+        os.mkdir('results')
 
     # convergence plots
     convergence_plots()
