@@ -109,7 +109,7 @@ if __name__ == '__main__':
 
             # copy model into a Sequential model because the SHAP package does not support otherwise
             shapy_cat = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(x.shape[1:]), SHAPyCat(model)])
-            shapy_cat_params = tf.split(shapy_cat(x[i_valid]), num_or_size_splits=2, axis=-1)
+            shapy_cat_params = np.split(shapy_cat.predict(x=x[i_valid], verbose=0), 2, axis=-1)
             for i, key in enumerate(params.keys()):
                 max_abs_error = tf.reduce_max(tf.abs(shapy_cat_params[i] - params[key])).numpy()
                 assert max_abs_error == 0.0, 'bad SHAPy cat!'
