@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
-        x, y, sequence, token_to_nt = pickle.load(f).values()
+        x, y, sequence = pickle.load(f).values()
     x = tf.one_hot(x, depth=4)
     y = tf.expand_dims(y, axis=1)
 
@@ -117,10 +117,9 @@ if __name__ == '__main__':
             # compute SHAP values
             e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
             shap_values = e.shap_values(x[i_valid].numpy())
-            shap_dict = dict(sequence=sequence[i_valid].numpy().tolist())
-            for token, nt in enumerate(token_to_nt):
-                shap_dict.update({'mean:' + nt: shap_values[0][..., token].tolist()})
-                shap_dict.update({'std:' + nt: shap_values[1][..., token].tolist()})
+            shap_dict = dict(sequence=sequence[i_valid].numpy().tolist(),
+                             mean=shap_values[0].sum(-1).tolist(),
+                             std=shap_values[1].sum(-1).tolist())
             shap = pd.concat([shap, pd.DataFrame(shap_dict, index.repeat(x[i_valid].shape[0]))])
 
             # clear out memory
