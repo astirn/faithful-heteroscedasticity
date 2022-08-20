@@ -180,6 +180,33 @@ def generate_crispr_tables():
     print_table(df_ece.reset_index(), file_name='crispr_ece.tex', highlight_min=True)
 
 
+def crispr_motif_plots():
+    if not os.path.exists(os.path.join('experiments', 'crispr')):
+        return
+
+    # loop over datasets with SHAP values
+    for dataset in os.listdir(os.path.join('experiments', 'crispr')):
+        shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
+        if os.path.exists(shap_file):
+            df_shap = pd.read_pickle(shap_file).sort_index()
+
+            # plot learned motifs for each model
+            for model in df_shap.index.unique():
+                fig, ax = plt.subplots(nrows=2, figsize=(15, 5))
+                fig.suptitle(dataset.capitalize() + ':' + model)
+                for i, nt in enumerate(['A', 'C', 'G', 'T']):
+                    mask = np.array(df_shap.loc[model, 'sequence'].apply(lambda seq: [s == nt for s in seq]).to_list())
+                    mean_shap_nt = (mask * np.array(df_shap.loc[model, 'mean'].to_list())).sum(0) / mask.sum(0)
+                    std_shap_nt = (mask * np.array(df_shap.loc[model, 'std'].to_list())).sum(0) / mask.sum(0)
+                    ax[0].plot(range(1, len(mean_shap_nt) + 1), mean_shap_nt, label=nt)
+                    ax[1].plot(range(1, len(std_shap_nt) + 1), std_shap_nt, label=nt)
+                ax[0].set_title('Mean SHAP')
+                ax[1].set_title('Standard Deviation SHAP')
+                ax[0].legend()
+                ax[1].legend()
+                plt.tight_layout()
+
+
 if __name__ == '__main__':
 
     # output directory
