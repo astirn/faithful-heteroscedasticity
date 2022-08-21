@@ -210,7 +210,8 @@ def crispr_motif_plots():
                 ax[1].set_ylim([-limit, limit])
                 ax[1].set_ylim([-limit, limit])
                 plt.tight_layout()
-                fig.savefig('results/crispr_' + dataset + '_' + model.lower().replace(' ', '-') + '.pdf')
+                file_name = 'crispr_shap_' + dataset + '_' + model.lower().replace(' ', '-') + '.pdf'
+                fig.savefig(os.path.join('results', file_name))
 
 
 if __name__ == '__main__':
