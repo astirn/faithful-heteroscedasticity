@@ -1,5 +1,7 @@
 import os
+import logomaker
 import pickle
+
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
@@ -193,17 +195,20 @@ def crispr_motif_plots():
             # plot learned motifs for each model
             for model in df_shap.index.unique():
                 fig, ax = plt.subplots(nrows=2, figsize=(15, 5))
-                fig.suptitle(dataset.capitalize() + ':' + model)
-                for i, nt in enumerate(['A', 'C', 'G', 'T']):
+                fig.suptitle(model + ' : ' + dataset)
+                mean_shap = pd.DataFrame()
+                std_shap = pd.DataFrame()
+                for nt in ['A', 'C', 'G', 'T']:
                     mask = np.array(df_shap.loc[model, 'sequence'].apply(lambda seq: [s == nt for s in seq]).to_list())
-                    mean_shap_nt = (mask * np.array(df_shap.loc[model, 'mean'].to_list())).sum(0) / mask.sum(0)
-                    std_shap_nt = (mask * np.array(df_shap.loc[model, 'std'].to_list())).sum(0) / mask.sum(0)
-                    ax[0].plot(range(1, len(mean_shap_nt) + 1), mean_shap_nt, label=nt)
-                    ax[1].plot(range(1, len(std_shap_nt) + 1), std_shap_nt, label=nt)
-                ax[0].set_title('Mean SHAP')
-                ax[1].set_title('Standard Deviation SHAP')
-                ax[0].legend()
-                ax[1].legend()
+                    mean_shap[nt] = (mask * np.array(df_shap.loc[model, 'mean'].to_list())).sum(0) / mask.sum(0)
+                    std_shap[nt] = (mask * np.array(df_shap.loc[model, 'std'].to_list())).sum(0) / mask.sum(0)
+                logomaker.Logo(mean_shap, flip_below=False, ax=ax[0])
+                logomaker.Logo(std_shap, flip_below=False, ax=ax[1])
+                ax[0].set_ylabel('SHAP of the Mean')
+                ax[1].set_ylabel('SHAP of the Std. Dev.')
+                limit = max(abs(np.array(list(ax[0].get_ylim()) + list(ax[1].get_ylim()))))
+                ax[1].set_ylim([-limit, limit])
+                ax[1].set_ylim([-limit, limit])
                 plt.tight_layout()
 
 
@@ -216,12 +221,9 @@ if __name__ == '__main__':
     # convergence plots
     convergence_plots()
 
-    # UCI tables
-    generate_uci_tables(normalized=False)
-    generate_uci_tables(normalized=True)
-
-    # CRISPR tables
+    # CRISPR tables and figures
     generate_crispr_tables()
+    crispr_motif_plots()
 
     # show plots
     plt.show()
