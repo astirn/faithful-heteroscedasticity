@@ -223,6 +223,10 @@ if __name__ == '__main__':
     # convergence plots
     convergence_plots()
 
+    # UCI tables
+    generate_uci_tables(normalized=False)
+    generate_uci_tables(normalized=True)
+
     # CRISPR tables and figures
     generate_crispr_tables()
     crispr_motif_plots()

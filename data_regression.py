@@ -172,12 +172,16 @@ def load_data(data_dir, dir_after_unzip, data_file, parse_args, **kwargs):
         pickle.dump({'covariates': x, 'response': y}, f)
 
 
-def generate_toy_data(num_samples=500, sparse=False):
+def generate_toy_data(num_samples=500, seed=None):
     def data_mean(x):
         return x * np.sin(x)
 
     def data_std(x):
         return 0.1 + np.abs(0.5 * x)
+
+    # set random seed if one was provided
+    if seed is not None:
+        np.random.seed(seed)
 
     # generate training and validation data
     x_isolated = np.array([0.5, 9.5])
