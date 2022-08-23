@@ -2,12 +2,11 @@ import os
 import logomaker
 import pickle
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
-
-from matplotlib import pyplot as plt
 
 
 def convergence_plots():
@@ -31,6 +30,7 @@ def convergence_plots():
     fig_learning_curve.savefig(os.path.join('results', 'toy_learning_curve.pdf'))
 
     # convergence figure
+    palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
     models = measurements.index.unique(0)
     fig_convergence, ax = plt.subplots(nrows=2, ncols=len(models), figsize=(5 * len(models), 10))
     for i, model in enumerate(models):
@@ -45,9 +45,9 @@ def convergence_plots():
 
         # predictive moments
         df = measurements.loc[model].reset_index()
-        palette = 'ch:s=.3,rot=-.25'
-        sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=False, palette=palette, ax=ax[0, i])
-        sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=False, palette=palette, ax=ax[1, i])
+        legend = 'full' if i == len(models) - 1 else False
+        sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=legend, palette=palette, ax=ax[0, i])
+        sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=legend, palette=palette, ax=ax[1, i])
 
         # true mean and standard deviation
         ax[0, i].plot(data['x_test'], data['target_mean'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
@@ -57,6 +57,8 @@ def convergence_plots():
         ax[1, i].set_ylim([ax[1, i].get_ylim()[0], 8.5])
 
     # finalize and save figure
+    ax[0, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
+    ax[1, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     plt.tight_layout()
     fig_convergence.savefig(os.path.join('results', 'toy_convergence.pdf'))
 
