@@ -38,22 +38,23 @@ def convergence_plots():
         # title
         ax[0, i].set_title(model)
 
-        # data rich regions
-        x = [data['x_train'][:-2].min(), data['x_train'][:-2].max()]
-        ax[0, i].fill_between(x, 0, 1, color='grey', alpha=0.5, transform=ax[0, i].get_xaxis_transform())
-        ax[1, i].fill_between(x, 0, 1, color='grey', alpha=0.5, transform=ax[1, i].get_xaxis_transform())
+        # plot data
+        sizes = 12.5 * np.ones_like(data['x_train'])
+        sizes[-2:] = 125
+        ax[0, i].scatter(data['x_train'], data['y_train'], alpha=0.5, s=sizes)
 
         # predictive moments
         df = measurements.loc[model].reset_index()
-        sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend='brief', ax=ax[0, i])
-        sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend='brief', ax=ax[1, i])
+        palette = 'ch:s=.3,rot=-.25'
+        sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=False, palette=palette, ax=ax[0, i])
+        sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=False, palette=palette, ax=ax[1, i])
 
         # true mean and standard deviation
-        ax[0, i].plot(data['x_test'], data['target_mean'], color='red', linestyle=':')
-        ax[1, i].plot(data['x_test'], data['target_std'], color='red', linestyle=':')
+        ax[0, i].plot(data['x_test'], data['target_mean'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
+        ax[1, i].plot(data['x_test'], data['target_std'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
 
-        # plot isolated points on top layer
-        ax[0, i].scatter(data['x_train'][-2:], data['y_train'][-2:], color='red', marker='o')
+        # make things pretty
+        ax[1, i].set_ylim([ax[1, i].get_ylim()[0], 8.5])
 
     # finalize and save figure
     plt.tight_layout()
