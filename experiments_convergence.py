@@ -1,8 +1,8 @@
 import argparse
+import models
 import os
 import pickle
 
-import models_regression as models
 import numpy as np
 import pandas as pd
 import tensorflow as tf
