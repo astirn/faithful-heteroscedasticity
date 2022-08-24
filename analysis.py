@@ -69,7 +69,7 @@ def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, 
 
     # MSE
     squared_errors = df_measurements.loc[index, 'squared errors']
-    null_index = 'Unit Variance Normal'
+    null_index = 'Unit Variance'
     if isinstance(index, pd.MultiIndex):
         null_index = index.set_levels([null_index], level='Model')
     null_squared_errors = df_measurements.loc[null_index, 'squared errors']
@@ -103,9 +103,9 @@ def print_table(df, file_name, null_columns=None, highlight_min=False):
     df_latex = df.melt(id_vars=['Dataset'], value_vars=df.columns[1:], ignore_index=False)
     df_latex = df_latex.reset_index()
     df_latex = df_latex.pivot(index='Dataset', columns=['Model', 'variable'], values='value')
-    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance Normal', null_columns or slice(None))],
-                          df_latex[['Heteroscedastic Normal']],
-                          df_latex[['Faithful Heteroscedastic Normal']]], axis=1)
+    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', null_columns or slice(None))],
+                          df_latex[['Heteroscedastic']],
+                          df_latex[['Faithful Heteroscedastic']]], axis=1)
     style = df_latex.style.hide(axis=1, names=True)
     if highlight_min:
         style = style.highlight_min(props='bfseries:;', axis=1)
