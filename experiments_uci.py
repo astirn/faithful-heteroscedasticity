@@ -10,7 +10,7 @@ import pandas as pd
 import tensorflow as tf
 
 from callbacks import RegressionCallback
-from data_regression import create_or_load_fold
+from data import create_or_load_fold
 from metrics import RootMeanSquaredError
 from sklearn import preprocessing
 from utils import ZScoreNormalization

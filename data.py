@@ -10,6 +10,35 @@ import pandas as pd
 from urllib import request
 
 
+def generate_toy_data(num_samples=500, seed=None):
+    def data_mean(x):
+        return x * np.sin(x)
+
+    def data_std(x):
+        return 0.1 + np.abs(0.5 * x)
+
+    # set random seed if one was provided
+    if seed is not None:
+        np.random.seed(seed)
+
+    # generate training and validation data
+    x_isolated = np.array([0.5, 9.5])
+    y_isolated = data_mean(x_isolated)
+    x_train = np.random.uniform(2.5, 7.5, size=num_samples - len(x_isolated))
+    y_train = data_mean(x_train) + np.random.normal(scale=data_std(x_train))
+    x_train = np.concatenate([x_train, x_isolated], axis=0)
+    y_train = np.concatenate([y_train, y_isolated], axis=0)
+
+    # generate evaluation points with the associated actual mean and standard deviation
+    x_test = np.linspace(0, 10, 250)
+    target_mean = data_mean(x_test)
+    target_std = data_std(x_test)
+
+    # process return tuple
+    return dict(x_train=x_train[:, None], y_train=y_train[:, None],
+                x_test=x_test[:, None], target_mean=target_mean[:, None], target_std=target_std[:, None])
+
+
 def trim_eol_whitespace(data_file):
     with open(data_file, 'r') as f:
         lines = f.readlines()
@@ -170,35 +199,6 @@ def load_data(data_dir, dir_after_unzip, data_file, parse_args, **kwargs):
     # save data
     with open(os.path.join(save_dir, save_dir.split(os.sep)[-1] + '.pkl'), 'wb') as f:
         pickle.dump({'covariates': x, 'response': y}, f)
-
-
-def generate_toy_data(num_samples=500, seed=None):
-    def data_mean(x):
-        return x * np.sin(x)
-
-    def data_std(x):
-        return 0.1 + np.abs(0.5 * x)
-
-    # set random seed if one was provided
-    if seed is not None:
-        np.random.seed(seed)
-
-    # generate training and validation data
-    x_isolated = np.array([0.5, 9.5])
-    y_isolated = data_mean(x_isolated)
-    x_train = np.random.uniform(2.5, 7.5, size=num_samples - len(x_isolated))
-    y_train = data_mean(x_train) + np.random.normal(scale=data_std(x_train))
-    x_train = np.concatenate([x_train, x_isolated], axis=0)
-    y_train = np.concatenate([y_train, y_isolated], axis=0)
-
-    # generate evaluation points with the associated actual mean and standard deviation
-    x_test = np.linspace(0, 10, 250)
-    target_mean = data_mean(x_test)
-    target_std = data_std(x_test)
-
-    # process return tuple
-    return dict(x_train=x_train[:, None], y_train=y_train[:, None],
-                x_test=x_test[:, None], target_mean=target_mean[:, None], target_std=target_std[:, None])
 
 
 def create_or_load_fold(dataset, num_folds, save_path=None):
