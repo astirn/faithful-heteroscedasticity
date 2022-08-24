@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-from data import generate_toy_data
+from datasets import generate_toy_data
 from metrics import RootMeanSquaredError, ExpectedCalibrationError
 
 

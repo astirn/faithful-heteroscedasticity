@@ -4,7 +4,7 @@ import seaborn as sns
 import tensorflow as tf
 from abc import ABC
 from callbacks import RegressionCallback
-from data import generate_toy_data
+from datasets import generate_toy_data
 from matplotlib import pyplot as plt
 from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
 from tensorflow_probability import distributions as tfpd
