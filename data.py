@@ -55,7 +55,7 @@ def decimal_comma_to_decimal_point(data_file):
         f.writelines(lines)
 
 
-REGRESSION_DATA = {
+UCI_REGRESSION_DATA = {
     'boston':
         {'url': 'https://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.data',
          'dir_after_unzip': None,
@@ -133,29 +133,29 @@ REGRESSION_DATA = {
 }
 
 
-def download_all(force_download=False):
+def download_uci_datasets(force_download=False):
 
     # make data directory if it doesn't yet exist
     if not os.path.exists('data'):
         os.mkdir('data')
 
     # download all regression data experiments
-    for key in REGRESSION_DATA.keys():
+    for key in UCI_REGRESSION_DATA.keys():
         data_dir = os.path.join('data', key)
         if not os.path.exists(data_dir):
             os.mkdir(data_dir)
-        file = os.path.join(data_dir, REGRESSION_DATA[key]['url'].split('/')[-1])
+        file = os.path.join(data_dir, UCI_REGRESSION_DATA[key]['url'].split('/')[-1])
         if os.path.exists(file) and force_download:
             os.remove(file)
         elif os.path.exists(file) and not force_download:
             print(file.split(os.sep)[-1], 'already exists.')
             continue
         print('Downloading', file.split(os.sep)[-1])
-        request.urlretrieve(REGRESSION_DATA[key]['url'], file)
+        request.urlretrieve(UCI_REGRESSION_DATA[key]['url'], file)
     print('Downloads complete!')
 
 
-def load_data(data_dir, dir_after_unzip, data_file, parse_args, **kwargs):
+def load_uci_data(data_dir, dir_after_unzip, data_file, parse_args, **kwargs):
 
     # save the base data directory as the save directory, since data_dir might be modified below
     save_dir = data_dir
@@ -239,9 +239,9 @@ def create_or_load_fold(dataset, num_folds, save_path=None):
 if __name__ == '__main__':
 
     # download all the data
-    download_all()
+    download_uci_datasets()
 
     # process all the data
-    for key in REGRESSION_DATA.keys():
-        load_data(data_dir=os.path.join('data', key), **REGRESSION_DATA[key])
+    for dataset in UCI_REGRESSION_DATA.keys():
+        load_uci_data(data_dir=os.path.join('data', dataset), **UCI_REGRESSION_DATA[dataset])
     print('Processing complete!')
