@@ -38,10 +38,12 @@ def convergence_plots():
         # title
         ax[0, i].set_title(model)
 
-        # plot data
+        # plot data and data rich region
         sizes = 12.5 * np.ones_like(data['x_train'])
         sizes[-2:] = 125
         ax[0, i].scatter(data['x_train'], data['y_train'], alpha=0.5, s=sizes)
+        x_bounds = [data['x_train'][:-2].min(), data['x_train'][:-2].max()]
+        ax[1, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[1, i].get_xaxis_transform())
 
         # predictive moments
         df = measurements.loc[model].reset_index()
