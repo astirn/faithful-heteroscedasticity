@@ -214,20 +214,10 @@ def create_or_load_fold(dataset, num_folds, save_path=None):
     # otherwise, we need to make new split assignments
     else:
 
-        # toy data
-        if dataset == 'toy':
-            x_1, y_1, _, _, _ = generate_toy_data(num_samples=500, sparse=True)
-            s_1 = np.ones(x_1.shape[0], dtype=int)
-            x_2, y_2, _, _, _ = generate_toy_data(num_samples=500, sparse=True)
-            s_2 = 2 * np.ones(x_2.shape[0], dtype=int)
-            data = {'covariates': np.concatenate([x_1, x_2]),
-                    'response': np.concatenate([y_1, y_2]),
-                    'split': np.concatenate([s_1, s_2])}
-        else:
-            # load and split data
-            with open(os.path.join('data', dataset, dataset + '.pkl'), 'rb') as f:
-                data = pickle.load(f)
-            data.update({'split': 1 + np.random.choice(num_folds, data['response'].shape[0])})
+        # load and split data
+        with open(os.path.join('data', dataset, dataset + '.pkl'), 'rb') as f:
+            data = pickle.load(f)
+        data.update({'split': 1 + np.random.choice(num_folds, data['response'].shape[0])})
 
     # if save path was provided, save the data with split assignments
     if save_path is not None:

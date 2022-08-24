@@ -1,7 +1,9 @@
 import argparse
+
 import numpy as np
 import seaborn as sns
 import tensorflow as tf
+
 from abc import ABC
 from callbacks import RegressionCallback
 from datasets import generate_toy_data
@@ -74,10 +76,11 @@ class Regression(tf.keras.Model):
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
 
-class UnitVarianceNormal(Regression, ABC):
+class UnitVariance(Regression, ABC):
 
     def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
-        Regression.__init__(self, name='UnitVarianceNormal', **kwargs)
+        Regression.__init__(self, name='UnitVariance', **kwargs)
+        self.likelihood = 'Normal'
 
         if f_trunk is None:
             self.f_trunk = lambda x, **k: x
@@ -101,10 +104,11 @@ class UnitVarianceNormal(Regression, ABC):
         return params
 
 
-class HeteroscedasticNormal(Regression, ABC):
+class Heteroscedastic(Regression, ABC):
 
     def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
-        Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
+        Regression.__init__(self, name=kwargs.pop('name', 'Heteroscedastic'), **kwargs)
+        self.likelihood = 'Normal'
 
         if f_trunk is None:
             self.f_trunk = lambda x, **k: x
@@ -130,10 +134,11 @@ class HeteroscedasticNormal(Regression, ABC):
         return params
 
 
-class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
+class FaithfulHeteroscedastic(Heteroscedastic, ABC):
 
     def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
-        HeteroscedasticNormal.__init__(self, dim_x, dim_y, f_param, f_trunk, name='FaithfulHeteroscedasticNormal', **kwargs)
+        Heteroscedastic.__init__(self, dim_x, dim_y, f_param, f_trunk, name='FaithfulHeteroscedastic', **kwargs)
+        self.likelihood = 'Normal'
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -199,7 +204,7 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--model', type=str, default='FaithfulHeteroscedasticNormal', help='which model to use')
+    parser.add_argument('--model', type=str, default='FaithfulHeteroscedastic', help='which model to use')
     args = parser.parse_args()
 
     # load data
@@ -207,12 +212,12 @@ if __name__ == '__main__':
 
     # pick the appropriate model
     plot_title = args.model
-    if args.model == 'UnitVarianceNormal':
-        MODEL = UnitVarianceNormal
-    elif args.model == 'HeteroscedasticNormal':
-        MODEL = HeteroscedasticNormal
-    elif args.model == 'FaithfulHeteroscedasticNormal':
-        MODEL = FaithfulHeteroscedasticNormal
+    if args.model == 'UnitVariance':
+        MODEL = UnitVariance
+    elif args.model == 'Heteroscedastic':
+        MODEL = Heteroscedastic
+    elif args.model == 'FaithfulHeteroscedastic':
+        MODEL = FaithfulHeteroscedastic
     else:
         raise NotImplementedError
 

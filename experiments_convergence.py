@@ -20,10 +20,11 @@ if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_seed', type=int, default=112358, help='seed to generate data')
     parser.add_argument('--epoch_modulo', type=int, default=2000, help='number of epochs between logging results')
     parser.add_argument('--epochs', type=int, default=30000, help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate data')
+    parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
     args = parser.parse_args()
 
     # make experimental directory base path
@@ -31,23 +32,24 @@ if __name__ == '__main__':
     os.makedirs(exp_path, exist_ok=True)
 
     # generate data
-    data = generate_toy_data(seed=args.data_seed)
+    data = generate_toy_data(seed=args.seed_data)
     with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
         pickle.dump(data, f)
 
     # initialize mean model
-    mean_model = models.UnitVarianceNormal(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
+    tf.keras.utils.set_random_seed(args.seed_init)
+    mean_model = models.UnitVariance(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
     mean_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                        metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
     # initialize heteroscedastic model such that it starts with the same mean network initialization
-    full_model = models.HeteroscedasticNormal(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
+    full_model = models.Heteroscedastic(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
     full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                        metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
     full_model.f_mean.set_weights(mean_model.get_weights())
 
     # initialize faithful heteroscedastic model such that it starts with the same mean/std network initializations
-    faith_model = models.FaithfulHeteroscedasticNormal(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
+    faith_model = models.FaithfulHeteroscedastic(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
     faith_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                         metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
     faith_model.f_mean.set_weights(mean_model.get_weights())
