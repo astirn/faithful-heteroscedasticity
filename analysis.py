@@ -19,13 +19,13 @@ def convergence_plots():
     # load data and measurements
     with open(data_file, 'rb') as f:
         data = pickle.load(f)
-    metrics = pd.read_pickle(metrics_file)
+    metrics = pd.read_pickle(metrics_file).reset_index()
     measurements = pd.read_pickle(measurements_file)
 
     # learning curve figure
     fig_learning_curve, ax = plt.subplots(ncols=2, figsize=(10, 5))
-    sns.lineplot(data=metrics.reset_index(), x='Epoch', y='RMSE', hue='Model', ax=ax[0])
-    sns.lineplot(data=metrics.reset_index(), x='Epoch', y='ECE', hue='Model', ax=ax[1])
+    sns.lineplot(data=metrics, x='Epoch', y='RMSE', hue='Model', style='Model', ax=ax[0])
+    sns.lineplot(data=metrics, x='Epoch', y='ECE', hue='Model', style='Model', ax=ax[1])
     plt.tight_layout()
     fig_learning_curve.savefig(os.path.join('results', 'toy_learning_curve.pdf'))
 
