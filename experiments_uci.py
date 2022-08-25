@@ -1,10 +1,10 @@
 import argparse
 import json
+import models
 import os
 import pickle
 import zlib
 
-import models_regression as models
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -21,9 +21,9 @@ parser.add_argument('--dataset', type=str, default='boston', help='which dataset
 parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
-parser.add_argument('--split_seed', type=int, default=853211, help='number of trials per fold')
-parser.add_argument('--trial_seed', type=int, default=112358, help='number of trials per fold')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
+parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate data')
+parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
 args = parser.parse_args()
 
 # make experimental directory base path
@@ -34,17 +34,16 @@ os.makedirs(exp_path, exist_ok=True)
 nn_kwargs_1 = {'d_hidden': (50,), 'f_hidden': 'elu'}
 nn_kwargs_2 = {'d_hidden': (50, 50), 'f_hidden': 'elu'}
 models_and_configs = [
-    {'model': models.UnitVarianceNormal, 'config': {**dict(), **nn_kwargs_1}},
-    {'model': models.UnitVarianceNormal, 'config': {**dict(), **nn_kwargs_2}},
-    {'model': models.HeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_1}},
-    {'model': models.HeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_2}},
-    {'model': models.FaithfulHeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_1}},
-    {'model': models.FaithfulHeteroscedasticNormal, 'config': {**dict(), **nn_kwargs_2}},
+    {'model': models.UnitVariance, 'config': {**dict(), **nn_kwargs_1}},
+    {'model': models.UnitVariance, 'config': {**dict(), **nn_kwargs_2}},
+    {'model': models.Heteroscedastic, 'config': {**dict(), **nn_kwargs_1}},
+    {'model': models.Heteroscedastic, 'config': {**dict(), **nn_kwargs_2}},
+    {'model': models.FaithfulHeteroscedastic, 'config': {**dict(), **nn_kwargs_1}},
+    {'model': models.FaithfulHeteroscedastic, 'config': {**dict(), **nn_kwargs_2}},
 ]
 
 # create or load folds
-np.random.seed(args.split_seed)
-data = create_or_load_fold(args.dataset, args.num_folds, exp_path)
+data = create_or_load_fold(args.dataset, args.num_folds, save_path=exp_path, seed=args.seed_data)
 
 # loop over folds
 measurements = pd.DataFrame()
@@ -72,8 +71,8 @@ for fold in np.unique(data['split']):
         for model_and_config in models_and_configs:
             print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
-            # each trial within a fold gets the same random seed
-            tf.keras.utils.set_random_seed(trial * args.trial_seed)
+            # every model within a trial/fold gets the same seed
+            tf.keras.utils.set_random_seed(int(zlib.crc32(str(trial * args.seed_init).encode()) * fold) % (2 ** 32 - 1))
 
             # configure and build model
             model = model_and_config['model'](
