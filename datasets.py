@@ -232,25 +232,25 @@ def create_or_load_fold(dataset, num_folds, save_path=None, seed=None):
     return data
 
 
-def load_tensorflow_dataset(dataset, batch_size):
+def load_tensorflow_dataset(dataset):
     ds_train = tfds.load(name=dataset, split=tfds.Split.TRAIN, data_dir='data')
     ds_valid = tfds.load(name=dataset, split=tfds.Split.TEST, data_dir='data')
     x_train = [tf.cast(ele['image'], tf.float32) for ele in ds_train.batch(len(ds_train))][0]
     x_valid = [tf.cast(ele['image'], tf.float32) for ele in ds_valid.batch(len(ds_valid))][0]
     x_train = x_train / tf.reduce_max(x_train)
-    x_valid = x_valid / tf.reduce_max(x_valid)
-    ds_train = tf.data.Dataset.from_tensor_slices({'x': x_train}).shuffle(10 * batch_size).batch(batch_size)
-    ds_valid = tf.data.Dataset.from_tensor_slices({'x': x_valid}).shuffle(10 * batch_size).batch(batch_size)
+    x_valid = x_valid / tf.reduce_max(x_train)
 
-    return ds_train, ds_valid
+    return x_train, x_valid
 
 
 if __name__ == '__main__':
 
-    # download all the data
+    # download and process all the UCI data
     download_uci_datasets()
-
-    # process all the data
     for uci_dataset in UCI_REGRESSION_DATA.keys():
         load_uci_data(data_dir=os.path.join('data', uci_dataset), **UCI_REGRESSION_DATA[uci_dataset])
-    print('Processing complete!')
+    print('UCI processing complete!')
+
+    # download all the VAE data
+    for vae_dataset in ['mnist', 'fashion_mnist']:
+        load_tensorflow_dataset(vae_dataset)
