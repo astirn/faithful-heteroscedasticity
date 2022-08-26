@@ -2,7 +2,6 @@ import argparse
 import os
 import pickle
 
-import models_regression as models
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -10,6 +9,7 @@ import tensorflow as tf
 from callbacks import RegressionCallback
 from layers import SHAPyCat
 from metrics import RootMeanSquaredError, ExpectedCalibrationError
+from models import UnitVariance, Heteroscedastic, FaithfulHeteroscedastic
 from shap import DeepExplainer
 
 
@@ -36,9 +36,11 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='junction', help='which dataset to use')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--max_background', type=int, default=20000, help='maximum number of SHAP background samples')
     parser.add_argument('--num_folds', type=int, default=10, help='number of pre-validation folds')
-    parser.add_argument('--seed', type=int, default=12345, help='number of trials per fold')
     parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
+    parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
+    parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
     args = parser.parse_args()
 
     # make experimental directory base path etc...
@@ -53,7 +55,7 @@ if __name__ == '__main__':
     y = tf.expand_dims(y, axis=1)
 
     # create or load fold assignments
-    np.random.seed(args.seed)
+    np.random.seed(args.seed_data)
     if os.path.exists(folds_file):
         folds = np.load(folds_file)
     else:
@@ -72,7 +74,7 @@ if __name__ == '__main__':
         for mdl in [models.UnitVarianceNormal, models.HeteroscedasticNormal, models.FaithfulHeteroscedasticNormal]:
 
             # initialize model
-            tf.keras.utils.set_random_seed(k * args.seed)
+            tf.keras.utils.set_random_seed(k * args.seed_init)
             model = mdl(dim_x=x.shape[1:], dim_y=1, f_param=f_param, f_trunk=f_trunk)
             model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                           run_eagerly=args.debug,
@@ -115,7 +117,8 @@ if __name__ == '__main__':
                 assert max_abs_error == 0.0, 'bad SHAPy cat!'
 
             # compute SHAP values
-            e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:min(5000, x[i_train].shape[0])].numpy())
+            num_background_samples = min(args.max_background, x[i_train].shape[0])
+            e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:num_background_samples].numpy())
             shap_values = e.shap_values(x[i_valid].numpy())
             shap_dict = dict(sequence=sequence[i_valid].numpy().tolist(),
                              mean=shap_values[0].sum(-1).tolist(),
