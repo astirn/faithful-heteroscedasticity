@@ -1,12 +1,14 @@
-\begin{tabular}{l|l|l|l}
+\begin{tabular}{ll|l|l|l}
 \toprule
- & Unit Variance Normal & Heteroscedastic Normal & Faithful Heteroscedastic Normal \\
- & ECE & ECE & ECE \\
-Dataset &  &  &  \\
+ &  & Unit Variance & Heteroscedastic & Faithful Heteroscedastic \\
+ &  & ECE & ECE & ECE \\
+Dataset & Observation &  &  &  \\
 \midrule
-flow-cytometry & 0.2 & \bfseries 0.044 & 0.31 \\
-junction-splice-sites & 0.16 & \bfseries 0.026 & 0.17 \\
-junction-targets & 0.16 & \bfseries 0.071 & 0.17 \\
-off-target & 0.18 & \bfseries 0.061 & 0.36 \\
+\multirow[c]{2}{*}{flow-cytometry} & mean & 0.2 & \bfseries 0.021 & 0.31 \\
+ & replicates & 0.18 & \bfseries 0.076 & 0.25 \\
+\multirow[c]{2}{*}{junction-targets} & mean & 0.16 & \bfseries 0.11 & 0.27 \\
+ & replicates & 0.13 & \bfseries 0.069 & 0.26 \\
+\multirow[c]{2}{*}{off-target} & mean & 0.18 & \bfseries 0.045 & 0.34 \\
+ & replicates & 0.15 & \bfseries 0.028 & 0.26 \\
 \bottomrule
 \end{tabular}

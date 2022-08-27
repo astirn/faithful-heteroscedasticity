@@ -96,25 +96,23 @@ def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, 
     return df_mse, df_ece
 
 
-def print_table(df, file_name, null_columns=None, highlight_min=False):
+def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlight_min=False):
 
     # rearrange table for LaTeX
     df = df.set_index('Model')
-    df_latex = df.melt(id_vars=['Dataset'], value_vars=df.columns[1:], ignore_index=False)
+    df_latex = df.melt(id_vars=row_cols, value_vars=[c for c in df.columns if c not in row_cols], ignore_index=False)
     df_latex = df_latex.reset_index()
-    df_latex = df_latex.pivot(index='Dataset', columns=['Model', 'variable'], values='value')
+    df_latex = df_latex.pivot(index=row_cols, columns=['Model', 'variable'], values='value')
     df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', null_columns or slice(None))],
                           df_latex[['Heteroscedastic']],
                           df_latex[['Faithful Heteroscedastic']]], axis=1)
     style = df_latex.style.hide(axis=1, names=True)
     if highlight_min:
         style = style.highlight_min(props='bfseries:;', axis=1)
-    style.to_latex(
-        buf=os.path.join('results', file_name),
-        column_format='l' + ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)]),
-        hrules=True,
-        # multicol_align='p{2cm}'
-    )
+    col_fmt = 'l' * len(row_cols)
+    col_fmt += ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
+    style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True)
+    # multicol_align='p{2cm}'
 
 
 def generate_uci_tables(normalized):
@@ -183,8 +181,9 @@ def generate_crispr_tables():
                 df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    print_table(df_mse.reset_index(), file_name='crispr_mse.tex', null_columns=['MSE'])
-    print_table(df_ece.reset_index(), file_name='crispr_ece.tex', highlight_min=True)
+    row_cols = ('Dataset', 'Observation')
+    print_table(df_mse.reset_index(), row_cols=row_cols, file_name='crispr_mse.tex', null_columns=['MSE'])
+    print_table(df_ece.reset_index(), row_cols=row_cols, file_name='crispr_ece.tex', highlight_min=True)
 
 
 def crispr_motif_plots():
