@@ -190,32 +190,86 @@ def crispr_motif_plots():
     if not os.path.exists(os.path.join('experiments', 'crispr')):
         return
 
+    def sequence_mask(df):
+        return np.array(df.apply(lambda seq: [s == nt for s in seq]).to_list())
+
     # loop over datasets with SHAP values
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
         shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
         if os.path.exists(shap_file):
             df_shap = pd.read_pickle(shap_file).sort_index()
 
-            # plot learned motifs for each model
-            for model in df_shap.index.unique():
-                fig, ax = plt.subplots(nrows=2, figsize=(15, 5))
-                fig.suptitle(model + ' : ' + dataset)
-                mean_shap = pd.DataFrame()
-                std_shap = pd.DataFrame()
+            # models and observation order
+            models = ['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']
+            observations = ['mean', 'replicates', 'mean']
+
+            # SHAP of the mean figure
+            fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(15, 10))
+            fig.suptitle(dataset.capitalize())
+            ax[0, 0].set_title('SHAP of the mean when trained on mean')
+            ax[0, 1].set_title('SHAP of the mean when trained on replicates')
+            for model, observation in df_shap.index.unique():
+                shap = pd.DataFrame()
                 for nt in ['A', 'C', 'G', 'T']:
-                    mask = np.array(df_shap.loc[model, 'sequence'].apply(lambda seq: [s == nt for s in seq]).to_list())
-                    mean_shap[nt] = (mask * np.array(df_shap.loc[model, 'mean'].to_list())).sum(0) / mask.sum(0)
-                    std_shap[nt] = (mask * np.array(df_shap.loc[model, 'std'].to_list())).sum(0) / mask.sum(0)
-                logomaker.Logo(mean_shap, flip_below=False, ax=ax[0])
-                logomaker.Logo(std_shap, flip_below=False, ax=ax[1])
-                ax[0].set_ylabel('SHAP of the Mean')
-                ax[1].set_ylabel('SHAP of the Std. Dev.')
-                limit = max(abs(np.array(list(ax[0].get_ylim()) + list(ax[1].get_ylim()))))
-                ax[1].set_ylim([-limit, limit])
-                ax[1].set_ylim([-limit, limit])
-                plt.tight_layout()
-                file_name = 'crispr_shap_' + dataset + '_' + model.lower().replace(' ', '-') + '.pdf'
-                fig.savefig(os.path.join('results', file_name))
+                    mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
+                    shap_values = np.array(df_shap.loc[(model, observation), 'mean'].to_list())
+                    shap[nt] = (mask * shap_values).sum(0) / mask.sum(0)
+                ax_index = (models.index(model), observations.index(observation))
+                logomaker.Logo(shap, flip_below=False, ax=ax[ax_index])
+                ax[ax_index[0], 0].set_ylabel(model)
+            y_limit = ax[0, 0].get_ylim()
+            for ax in ax.flatten():
+                ax.set_ylim(y_limit)
+            plt.tight_layout()
+            fig.savefig(os.path.join('results', 'crispr_shap_mean_' + dataset + '.pdf'))
+
+            # SHAP of the standard deviation figure
+            models.pop(0)
+            fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(15, 10))
+            fig.suptitle(dataset.capitalize())
+            ax[0, 0].set_title(models[0])
+            ax[0, 1].set_title(models[1])
+            for col, model in enumerate(models):
+                shap = dict(mean=pd.DataFrame(), replicates=pd.DataFrame())
+                for observation in observations:
+                    for nt in ['A', 'C', 'G', 'T']:
+                        mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
+                        shap_values = np.array(df_shap.loc[(model, observation), 'std'].to_list())
+                        shap[observation][nt] = (mask * shap_values).sum(0) / mask.sum(0)
+                    ax_index = (observations.index(observation), col)
+                    logomaker.Logo(shap[observation], flip_below=False, ax=ax[ax_index])
+                    ax[ax_index[0], 0].set_ylabel('SHAP of the std. dev.\nwhen trained on ' + observation)
+                shap_delta = pd.DataFrame()
+                for nt in ['A', 'C', 'G', 'T']:
+                    shap_delta[nt] = shap['replicates'][nt] - shap['mean'][nt]
+                logomaker.Logo(shap_delta, flip_below=False, ax=ax[2, col])
+                ax[2, col].set_ylabel('SHAP of the $\\sqrt{\\mathrm{noise \\ variance}}$')
+            limit = max([max(abs(np.array(a.get_ylim()))) for a in ax.flatten()])
+            for ax in ax.flatten():
+                ax.set_ylim([-limit, limit])
+            plt.tight_layout()
+            fig.savefig(os.path.join('results', 'crispr_shap_std_' + dataset + '.pdf'))
+
+            # # plot learned motifs for each model
+            # for model in df_shap.index.unique():
+            #     fig, ax = plt.subplots(nrows=2, figsize=(15, 5))
+            #     fig.suptitle(model + ' : ' + dataset)
+            #     mean_shap = pd.DataFrame()
+            #     std_shap = pd.DataFrame()
+            #     for nt in ['A', 'C', 'G', 'T']:
+            #         mask = np.array(df_shap.loc[model, 'sequence'].apply(lambda seq: [s == nt for s in seq]).to_list())
+            #         mean_shap[nt] = (mask * np.array(df_shap.loc[model, 'mean'].to_list())).sum(0) / mask.sum(0)
+            #         std_shap[nt] = (mask * np.array(df_shap.loc[model, 'std'].to_list())).sum(0) / mask.sum(0)
+            #     logomaker.Logo(mean_shap, flip_below=False, ax=ax[0])
+            #     logomaker.Logo(std_shap, flip_below=False, ax=ax[1])
+            #     ax[0].set_ylabel('SHAP of the Mean')
+            #     ax[1].set_ylabel('SHAP of the Std. Dev.')
+            #     limit = max(abs(np.array(list(ax[0].get_ylim()) + list(ax[1].get_ylim()))))
+            #     ax[1].set_ylim([-limit, limit])
+            #     ax[1].set_ylim([-limit, limit])
+            #     plt.tight_layout()
+            #     file_name = 'crispr_shap_' + dataset + '_' + model.lower().replace(' ', '-') + '.pdf'
+            #     fig.savefig(os.path.join('results', file_name))
 
 
 if __name__ == '__main__':
