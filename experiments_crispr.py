@@ -120,8 +120,8 @@ if __name__ == '__main__':
                 metrics = pd.concat([metrics, pd.DataFrame(
                     data={'Fold': k * np.ones(len(hist.epoch), dtype=int),
                           'Epoch': np.array(hist.epoch),
-                          'RMSE': hist.history['RMSE'],
-                          'ECE': hist.history['ECE']},
+                          'RMSE': hist.history['RMSE'],  # TODO: should this be validation?
+                          'ECE': hist.history['ECE']},  # TODO: should this be validation?
                     index=index.repeat(len(hist.epoch))).set_index('Fold', append=True)])
 
             # save local performance measurements
