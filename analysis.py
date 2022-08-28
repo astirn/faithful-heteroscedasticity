@@ -9,7 +9,7 @@ import scipy.stats as stats
 import seaborn as sns
 
 
-def convergence_plots():
+def toy_convergence_plots():
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
     metrics_file = os.path.join('experiments', 'convergence', 'metrics.pkl')
     measurements_file = os.path.join('experiments', 'convergence', 'measurements.pkl')
@@ -115,7 +115,7 @@ def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlig
     # multicol_align='p{2cm}'
 
 
-def generate_uci_tables(normalized):
+def uci_tables(normalized):
     if not os.path.exists(os.path.join('experiments', 'uci')):
         return
 
@@ -161,7 +161,7 @@ def generate_uci_tables(normalized):
             print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
 
 
-def generate_crispr_tables():
+def crispr_tables():
     if not os.path.exists(os.path.join('experiments', 'crispr')):
         return
 
@@ -279,14 +279,14 @@ if __name__ == '__main__':
         os.mkdir('results')
 
     # convergence plots
-    convergence_plots()
+    toy_convergence_plots()
 
     # UCI tables
-    generate_uci_tables(normalized=False)
-    generate_uci_tables(normalized=True)
+    uci_tables(normalized=False)
+    uci_tables(normalized=True)
 
     # CRISPR tables and figures
-    generate_crispr_tables()
+    crispr_tables()
     crispr_motif_plots()
 
     # show plots
