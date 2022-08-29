@@ -1,113 +1,102 @@
 import argparse
+import models
 import os
-import pickle
-import zlib
 
 import pandas as pd
 import tensorflow as tf
 
 from callbacks import RegressionCallback
-from data_vae import load_data
-from metrics import MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
-from models_vae import encoder_dense, decoder_dense, NormalVAE, StudentVAE, GammaNormalVAE
+from datasets import load_tensorflow_dataset
+from metrics import RootMeanSquaredError, ExpectedCalibrationError
 
-# script arguments
-parser = argparse.ArgumentParser()
-parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
-parser.add_argument('--dataset', type=str, default='mnist', help='which dataset to use')
-parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-parser.add_argument('--dim_z', type=int, default=10, help='number of latent dimensions')
-parser.add_argument('--num_mc_samples', type=int, default=20, help='number of MC samples')
-parser.add_argument('--num_trials', type=int, default=5, help='number of trials')
-parser.add_argument('--seed', type=int, default=853211, help='random seed')
-parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
-args = parser.parse_args()
+from tensorflow_probability import distributions as tfd
+from tensorflow_probability import layers as tfpl
 
-# make experimental directory base path
-exp_path = os.path.join('experiments', 'vae', args.dataset)
-os.makedirs(exp_path, exist_ok=True)
 
-# models and configurations to run
-nn_kwargs = {'topology': 'dense', 'encoder_arch': [512, 256, 128], 'decoder_arch': [128, 256, 512]}
-models_and_configs = [
-    {'model': NormalVAE, 'config': {'optimization': 'first-order'}},
-    {'model': NormalVAE, 'config': {'optimization': 'second-order-mean'}},
-    {'model': StudentVAE, 'config': {'min_df': 3}},
-    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': False, 'prior_scale': 1e-3}},
-    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.25}},
-    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.50}},
-    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.75}},
-    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 0.85}},
-    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 1.00}},
-    # {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 1.15}},
-    {'model': GammaNormalVAE, 'config': {'min_df': 3, 'empirical_bayes': True, 'prior_scale': 1.25}},
-]
+# encoder network
+def f_encoder(d_in, dim_z, **kwargs):
+    prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
+    return tf.keras.Sequential(layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(256, activation='elu'),
+        tf.keras.layers.Dense(128, activation='elu'),
+        tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
+        tfpl.IndependentNormal(dim_z, activity_regularizer=tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True))
+    ])
 
-# load data folds
-ds_train, ds_valid = load_data(args.dataset, batch_size=args.batch_size)
 
-# loop over trials
-results = pd.DataFrame()
-for trial in range(1, args.num_trials + 1):
-    trial_path = os.path.join(exp_path, 'trial_' + str(trial))
+def f_decoder(d_in, d_out, f_out, **kwargs):
+    return tf.keras.Sequential(layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Dense(128, activation='elu'),
+        tf.keras.layers.Dense(256, activation='elu'),
+        tf.keras.layers.Dense(tf.reduce_prod(d_out), activation=f_out),
+        tf.keras.layers.Reshape(d_out)
+    ])
 
-    # loop over the models and configurations
-    for model_and_config in models_and_configs:
-        print('\n********* Trial {:d} *********'.format(trial))
 
-        # each trial within a fold gets the same random seed
-        tf.keras.utils.set_random_seed(trial * args.seed)
+if __name__ == '__main__':
 
-        # configure and build model
-        model = model_and_config['model'](
-            dim_x=(28, 28, 1),
-            dim_z=args.dim_z,
-            encoder=encoder_dense if nn_kwargs['topology'] == 'dense' else None,
-            encoder_arch=nn_kwargs['encoder_arch'],
-            decoder=decoder_dense if nn_kwargs['topology'] == 'dense' else None,
-            decoder_arch=nn_kwargs['decoder_arch'],
-            num_mc_samples=20,
-            **model_and_config['config']
-        )
-        optimizer = tf.keras.optimizers.Adam(5e-5)
-        model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
-            MeanLogLikelihood(),
-            RootMeanSquaredError(),
-            ExpectedCalibrationError(),
-        ])
+    # script arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
+    parser.add_argument('--dataset', type=str, default='mnist', help='which dataset to use')
+    parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
+    parser.add_argument('--dim_z', type=int, default=10, help='number of latent dimensions')
+    parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs')
+    parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
+    parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
+    args = parser.parse_args()
 
-        # determine directory where to save model
-        nn_dir = zlib.crc32(str(nn_kwargs).encode('utf'))
-        model_dir = os.path.join(trial_path, str(nn_dir), model.name)
+    # make experimental directory base path
+    exp_path = os.path.join('experiments', 'vae', args.dataset)
+    os.makedirs(exp_path, exist_ok=True)
 
-        # if we are set to resume and the model directory already contains a saved model, load it
-        if not bool(args.replace) and os.path.exists(os.path.join(model_dir, 'checkpoint')):
-            print(model.name + ' exists. Loading...')
-            model.load_weights(os.path.join(model_dir, 'best_checkpoint'))
-            with open(os.path.join(model_dir, 'hist.pkl'), 'rb') as f:
-                history = pickle.load(f)
+    # load data
+    x_clean_train, x_clean_valid = load_tensorflow_dataset(args.dataset)
 
-        # otherwise, train and save the model
+    # loop over observation types
+    measurements = pd.DataFrame()
+    for observation in ['clean', 'corrupted']:
+        print('******************** Observing: {:s} data ********************'.format(observation))
+
+        # select training/validation data according to observation type
+        if observation == 'clean':
+            x_train, x_valid = x_clean_train, x_clean_valid
+        elif observation == 'corrupted':
+            raise NotImplementedError
         else:
-            validation_freq = 1
-            hist = model.fit(x=ds_train, validation_data=ds_valid, validation_freq=validation_freq, epochs=int(20e3),
-                             verbose=0,
-                             callbacks=[RegressionCallback(validation_freq=validation_freq, early_stop_patience=20)])
-            model.save_weights(os.path.join(model_dir, 'best_checkpoint'))
-            history = hist.history
-            with open(os.path.join(model_dir, 'hist.pkl'), 'wb') as f:
-                pickle.dump(history, f)
+            raise NotImplementedError
 
-        # test model
-        test_metrics = model.evaluate(x=ds_valid, verbose=0)
-        print('Test LL = {:.4f} | Test RMSE = {:.4f} | Test ECE = {:.4f}'.format(*test_metrics))
+        # loop over models
+        for mdl in [models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]:
 
-        # update results table
-        new_results = pd.DataFrame(
-            data={'Model': model.name, 'Architecture': str(nn_kwargs), 'Epochs': len(history['LL']),
-                  'LL': test_metrics[0], 'RMSE': test_metrics[1], 'ECE': test_metrics[2]},
-            index=pd.MultiIndex.from_arrays([[trial]], names=['trial']))
-        results = pd.concat([results, new_results])
+            # initialize model
+            tf.keras.utils.set_random_seed(args.seed_init)
+            model = mdl(dim_x=x_train.shape[1:], dim_y=x_train.shape[1:], dim_z=args.dim_z,
+                        f_param=f_decoder, f_trunk=f_encoder)
+            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                          run_eagerly=args.debug,
+                          metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
-# save the results
-results.to_pickle(os.path.join(exp_path, 'results.pkl'))
+            # train the model
+            model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
+                      batch_size=args.batch_size, epochs=args.epochs, verbose=0,
+                      callbacks=[RegressionCallback(early_stop_patience=100)])
+
+            # index for this model and observation type
+            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+            index = pd.MultiIndex.from_tuples([(model_name, observation)], names=['Model', 'Observation'])
+
+            # measure performance
+            py_x = model.predictive_distribution(x=x_valid)
+            measurements = pd.concat([measurements, pd.DataFrame(
+                data={'x': x_valid.numpy().tolist(),
+                      'Mean': py_x.mean().numpy().tolist(),
+                      'Std. Deviation': py_x.stddev().numpy().tolist()},
+                index=index.repeat(x_valid.shape[0]))])
+
+    # save performance measures
+    measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))

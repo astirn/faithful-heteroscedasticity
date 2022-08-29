@@ -235,10 +235,11 @@ def create_or_load_fold(dataset, num_folds, save_path=None, seed=None):
 def load_tensorflow_dataset(dataset):
     ds_train = tfds.load(name=dataset, split=tfds.Split.TRAIN, data_dir='data')
     ds_valid = tfds.load(name=dataset, split=tfds.Split.TEST, data_dir='data')
-    x_train = [tf.cast(ele['image'], tf.float32) for ele in ds_train.batch(len(ds_train))][0]
-    x_valid = [tf.cast(ele['image'], tf.float32) for ele in ds_valid.batch(len(ds_valid))][0]
-    x_train = x_train / tf.reduce_max(x_train)
-    x_valid = x_valid / tf.reduce_max(x_train)
+    x_train, train_labels = [tuple(ele.values()) for ele in ds_train.batch(len(ds_train))][0]
+    x_valid, valid_labels = [tuple(ele.values()) for ele in ds_valid.batch(len(ds_valid))][0]
+    max_val = tf.cast(tf.reduce_max(x_train), tf.float32)
+    x_train = tf.cast(x_train, tf.float32) / max_val
+    x_valid = tf.cast(x_valid, tf.float32) / max_val
 
     return x_train, x_valid
 
