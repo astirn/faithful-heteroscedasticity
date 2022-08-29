@@ -44,10 +44,9 @@ if __name__ == '__main__':
     parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
     args = parser.parse_args()
 
-    # make experimental directory base path etc...
+    # make experimental directory base path
     exp_path = os.path.join('experiments', 'crispr', args.dataset)
     os.makedirs(exp_path, exist_ok=True)
-    folds_file = os.path.join(exp_path, 'folds.npy')
 
     # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
@@ -56,6 +55,7 @@ if __name__ == '__main__':
 
     # create or load fold assignments
     np.random.seed(args.seed_data)
+    folds_file = os.path.join(exp_path, 'folds.npy')
     if os.path.exists(folds_file):
         folds = np.load(folds_file)
     else:
