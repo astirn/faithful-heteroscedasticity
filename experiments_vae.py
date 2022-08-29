@@ -18,9 +18,12 @@ def f_encoder(d_in, dim_z, **kwargs):
     prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
     return tf.keras.Sequential(layers=[
         tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Conv2D(32, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(64, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(64, 5, strides=2, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(128, 7, strides=1, padding='valid', activation='relu'),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(256, activation='elu'),
-        tf.keras.layers.Dense(128, activation='elu'),
         tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
         # workaround for: https://github.com/tensorflow/probability/issues/1215
         tfpl.IndependentNormal(dim_z,
@@ -31,10 +34,14 @@ def f_encoder(d_in, dim_z, **kwargs):
 def f_decoder(d_in, d_out, f_out, **kwargs):
     return tf.keras.Sequential(layers=[
         tf.keras.layers.InputLayer(d_in),
-        tf.keras.layers.Dense(128, activation='elu'),
-        tf.keras.layers.Dense(256, activation='elu'),
-        tf.keras.layers.Dense(tf.reduce_prod(d_out), activation=f_out),
-        tf.keras.layers.Reshape(d_out)
+        tf.keras.layers.Reshape([1, 1, d_in]),
+        tf.keras.layers.Conv2DTranspose(64, 7, strides=1, padding='valid', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(64, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(64, 5, strides=2, padding='same', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(32, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(32, 5, strides=2, padding='same', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(32, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(1, 5, strides=1, padding='same', activation=f_out),
     ])
 
 
@@ -57,7 +64,8 @@ if __name__ == '__main__':
     os.makedirs(exp_path, exist_ok=True)
 
     # load data
-    x_clean_train, x_clean_valid = load_tensorflow_dataset(args.dataset)
+    x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
+    i_test = tf.concat([tf.where(tf.equal(valid_labels, k))[0] for k in tf.unique(valid_labels)[0]], axis=0)
 
     # loop over observation types
     measurements = pd.DataFrame()
@@ -93,12 +101,14 @@ if __name__ == '__main__':
             index = pd.MultiIndex.from_tuples([(model_name, observation)], names=['Model', 'Observation'])
 
             # measure performance
-            py_x = model.predictive_distribution(x=x_valid)
+            x_test = tf.gather(x_valid, i_test)
+            py_x = model.predictive_distribution(x=x_test)
             measurements = pd.concat([measurements, pd.DataFrame(
-                data={'x': x_valid.numpy().tolist(),
+                data={'x': x_test.numpy().tolist(),
+                      'y': tf.gather(valid_labels, i_test).numpy().tolist(),
                       'Mean': py_x.mean().numpy().tolist(),
                       'Std. Deviation': py_x.stddev().numpy().tolist()},
-                index=index.repeat(x_valid.shape[0]))])
+                index=index.repeat(x_test.shape[0]))])
 
     # save performance measures
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
