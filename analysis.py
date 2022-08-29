@@ -161,6 +161,38 @@ def uci_tables(normalized):
             print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
 
 
+def vae_plots():
+    if not os.path.exists(os.path.join('experiments', 'vae')):
+        return
+
+    # loop over datasets with performance measures
+    for dataset in os.listdir(os.path.join('experiments', 'vae')):
+        measurements_file = os.path.join('experiments', 'vae', dataset, 'measurements.pkl')
+        if os.path.exists(measurements_file):
+            df_measurements = pd.read_pickle(measurements_file).reset_index().set_index(['Model', 'y'])
+            df_measurements = df_measurements[~df_measurements.index.duplicated(keep='first')].sort_index()
+
+            # prepare plot and plot original data
+            fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
+            x = np.concatenate([np.array(x) for x in df_measurements.loc[('Unit Variance', slice(None)), 'x']], axis=1)
+            ax[0].imshow(x, cmap='gray_r')
+            ax[0].set_title('Data')
+            ax[0].set_xticks([])
+            ax[0].set_yticks([])
+
+            # loop over models
+            for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
+                df_model = df_measurements.loc[(model, slice(None)), :]
+                mean = np.concatenate([np.array(x) for x in df_model['Mean']], axis=1)
+                std = np.concatenate([np.array(x) for x in df_model['Std. Deviation']], axis=1)
+                ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r')
+                ax[i + 1].set_title(model)
+                ax[i + 1].set_xticks([])
+                ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
+
+            plt.tight_layout()
+
+
 def crispr_tables():
     if not os.path.exists(os.path.join('experiments', 'crispr')):
         return
