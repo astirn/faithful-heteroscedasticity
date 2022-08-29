@@ -238,10 +238,10 @@ def load_tensorflow_dataset(dataset):
     x_train, train_labels = [tuple(ele.values()) for ele in ds_train.batch(len(ds_train))][0]
     x_valid, valid_labels = [tuple(ele.values()) for ele in ds_valid.batch(len(ds_valid))][0]
     max_val = tf.cast(tf.reduce_max(x_train), tf.float32)
-    x_train = tf.cast(x_train, tf.float32) / max_val
-    x_valid = tf.cast(x_valid, tf.float32) / max_val
+    x_train = tf.cast(x_train, tf.float32) / max_val - 0.5
+    x_valid = tf.cast(x_valid, tf.float32) / max_val - 0.5
 
-    return x_train, x_valid
+    return x_train, train_labels, x_valid, valid_labels
 
 
 if __name__ == '__main__':
