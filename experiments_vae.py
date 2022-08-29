@@ -22,7 +22,9 @@ def f_encoder(d_in, dim_z, **kwargs):
         tf.keras.layers.Dense(256, activation='elu'),
         tf.keras.layers.Dense(128, activation='elu'),
         tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
-        tfpl.IndependentNormal(dim_z, activity_regularizer=tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True))
+        # workaround for: https://github.com/tensorflow/probability/issues/1215
+        tfpl.IndependentNormal(dim_z),
+        tfpl.KLDivergenceAddLoss(prior, use_exact_kl=True)
     ])
 
 
