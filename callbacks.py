@@ -62,7 +62,7 @@ class RegressionCallback(tf.keras.callbacks.Callback):
         if self.nan_inf:
             print('\nEpoch {:d}: NaN or Inf detected!'.format(self.stopped_epoch + 1))
         else:
-            print('\nEpoch {:d}: Finished!'.format(self.stopped_epoch + 1))
+            print('\nFinished!')
         if self.stopped_epoch > self.validation_freq:
             print('Restoring model weights from the end of the best epoch.')
             self.model.set_weights(self.best_weights)
