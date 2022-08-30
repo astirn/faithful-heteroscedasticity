@@ -1,9 +1,10 @@
 import argparse
 import models
 import os
+import pickle
 
-import pandas as pd
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 from callbacks import RegressionCallback
 from datasets import load_tensorflow_dataset
@@ -65,18 +66,39 @@ if __name__ == '__main__':
 
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
+
+    # select a test set to plot sorted by class label
     i_test = tf.concat([tf.where(tf.equal(valid_labels, k))[0] for k in tf.unique(valid_labels)[0]], axis=0)
+    i_test = tf.gather(i_test, tf.argsort(tf.gather(valid_labels, i_test)))
+
+    # create heteroscedastic noise variance templates
+    noise = tf.tile(tf.expand_dims(tf.linspace(1 / 255, 0.25, 28), axis=1), [1, tf.shape(x_clean_train)[1]])
+    num_classes = tf.unique(train_labels)[0].shape[0]
+    noise_std = [tfa.image.rotate(noise, 360 / num_classes * y, fill_mode='nearest') for y in range(num_classes)]
+    noise_std = tf.expand_dims(tf.stack(noise_std, axis=0), axis=-1)
+
+    # sample additive noise
+    tf.keras.utils.set_random_seed(args.seed_data)
+    x_corrupt_train = x_clean_train + tfd.Normal(loc=0, scale=tf.gather(noise_std, train_labels)).sample()
+    x_corrupt_valid = x_clean_valid + tfd.Normal(loc=0, scale=tf.gather(noise_std, valid_labels)).sample()
+
+    # initialize test measurements
+    measurements = {
+        'Data': {'clean': tf.gather(x_clean_valid, i_test), 'corrupt': tf.gather(x_corrupt_valid, i_test)},
+        'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
+        'Mean': {'clean': dict(), 'corrupt': dict()},
+        'Std. deviation':  {'clean': dict(), 'corrupt': dict()},
+    }
 
     # loop over observation types
-    measurements = pd.DataFrame()
-    for observation in ['clean', 'corrupted']:
+    for observation in ['clean', 'corrupt']:
         print('******************** Observing: {:s} data ********************'.format(observation))
 
         # select training/validation data according to observation type
         if observation == 'clean':
             x_train, x_valid = x_clean_train, x_clean_valid
-        elif observation == 'corrupted':
-            raise NotImplementedError
+        elif observation == 'corrupt':
+            x_train, x_valid = x_corrupt_train, x_corrupt_valid
         else:
             raise NotImplementedError
 
@@ -96,19 +118,12 @@ if __name__ == '__main__':
                       batch_size=args.batch_size, epochs=args.epochs, verbose=0,
                       callbacks=[RegressionCallback(early_stop_patience=100)])
 
-            # index for this model and observation type
-            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            index = pd.MultiIndex.from_tuples([(model_name, observation)], names=['Model', 'Observation'])
-
             # measure performance
-            x_test = tf.gather(x_valid, i_test)
-            py_x = model.predictive_distribution(x=x_test)
-            measurements = pd.concat([measurements, pd.DataFrame(
-                data={'x': x_test.numpy().tolist(),
-                      'y': tf.gather(valid_labels, i_test).numpy().tolist(),
-                      'Mean': py_x.mean().numpy().tolist(),
-                      'Std. Deviation': py_x.stddev().numpy().tolist()},
-                index=index.repeat(x_test.shape[0]))])
+            py_x = model.predictive_distribution(x=tf.gather(x_valid, i_test))
+            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+            measurements['Mean'][observation].update({model_name: py_x.mean()})
+            measurements['Std. deviation'][observation].update({model_name: py_x.stddev()})
 
     # save performance measures
-    measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+    with open(os.path.join(exp_path, 'measurements.pkl'), 'wb') as f:
+        pickle.dump(measurements, f)

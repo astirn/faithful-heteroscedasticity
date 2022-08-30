@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
+import tensorflow as tf
 
 
 def toy_convergence_plots():
@@ -165,30 +166,32 @@ def vae_plots():
     if not os.path.exists(os.path.join('experiments', 'vae')):
         return
 
-    # loop over datasets with performance measures
+    # loop over available measurements
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         measurements_file = os.path.join('experiments', 'vae', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
-            df_measurements = pd.read_pickle(measurements_file).reset_index().set_index(['Model', 'y'])
-            df_measurements = df_measurements[~df_measurements.index.duplicated(keep='first')].sort_index()
+            with open(measurements_file, 'rb') as f:
+                measurements = pickle.load(f)
 
-            # prepare plot and plot original data
-            fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
-            x = np.concatenate([np.array(x) for x in df_measurements.loc[('Unit Variance', slice(None)), 'x']], axis=1)
-            ax[0].imshow(x, cmap='gray_r')
-            ax[0].set_title('Data')
-            ax[0].set_xticks([])
-            ax[0].set_yticks([])
+            # loop over observation types
+            for observation in ['clean', 'corrupt']:
 
-            # loop over models
-            for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
-                df_model = df_measurements.loc[(model, slice(None)), :]
-                mean = np.concatenate([np.array(x) for x in df_model['Mean']], axis=1)
-                std = np.concatenate([np.array(x) for x in df_model['Std. Deviation']], axis=1)
-                ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r')
-                ax[i + 1].set_title(model)
-                ax[i + 1].set_xticks([])
-                ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
+                # prepare plot and plot original data
+                fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
+                x = tf.concat(tf.unstack(measurements['Data'][observation]), axis=1)
+                ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1)
+                ax[0].set_title('Data')
+                ax[0].set_xticks([])
+                ax[0].set_yticks([])
+
+                # loop over models
+                for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
+                    mean = tf.concat(tf.unstack(measurements['Mean'][observation][model]), axis=1)
+                    std = tf.concat(tf.unstack(measurements['Std. Deviation'][observation][model]), axis=1)
+                    ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=0, vmax=1)
+                    ax[i + 1].set_title(model)
+                    ax[i + 1].set_xticks([])
+                    ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
             plt.tight_layout()
 
