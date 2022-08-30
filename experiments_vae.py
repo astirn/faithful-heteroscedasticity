@@ -61,7 +61,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # make experimental directory base path
-    exp_path = os.path.join('experiments', 'vae', args.dataset)
+    exp_path = os.path.join('experiments', 'vae', args.dataset, str(args.dim_z))
     os.makedirs(exp_path, exist_ok=True)
 
     # load data

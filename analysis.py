@@ -168,10 +168,11 @@ def vae_plots():
 
     # loop over available measurements
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        measurements_file = os.path.join('experiments', 'vae', dataset, 'measurements.pkl')
-        if os.path.exists(measurements_file):
-            with open(measurements_file, 'rb') as f:
-                measurements = pickle.load(f)
+        for latent_dims in os.listdir(os.path.join('experiments', 'vae', dataset)):
+            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dims, 'measurements.pkl')
+            if os.path.exists(measurements_file):
+                with open(measurements_file, 'rb') as f:
+                    measurements = pickle.load(f)
 
             # loop over observation types
             for observation in ['clean', 'corrupt']:
