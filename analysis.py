@@ -175,16 +175,16 @@ def vae_plots():
                 with open(measurements_file, 'rb') as f:
                     measurements = pickle.load(f)
 
-            # loop over observation types
-            for observation in ['clean', 'corrupt']:
+                # loop over observation types
+                for observation in ['clean', 'corrupt']:
 
-                # prepare plot and plot original data
-                fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
-                x = tf.concat(tf.unstack(measurements['Data'][observation]), axis=1)
-                ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1)
-                ax[0].set_title('Data')
-                ax[0].set_xticks([])
-                ax[0].set_yticks([])
+                    # prepare plot and plot original data
+                    fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
+                    x = tf.concat(tf.unstack(measurements['Data'][observation]), axis=1)
+                    ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1)
+                    ax[0].set_title('Data')
+                    ax[0].set_xticks([])
+                    ax[0].set_yticks([])
 
                     # loop over models
                     for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
@@ -195,7 +195,7 @@ def vae_plots():
                         ax[i + 1].set_xticks([])
                         ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
-            plt.tight_layout()
+                    plt.tight_layout()
 
 
 def crispr_tables():
