@@ -39,7 +39,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--max_background', type=int, default=20000, help='maximum number of SHAP background samples')
     parser.add_argument('--num_folds', type=int, default=10, help='number of pre-validation folds')
-    parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
+    parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
     parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
     parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
     args = parser.parse_args()

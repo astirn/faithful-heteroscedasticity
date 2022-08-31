@@ -21,7 +21,7 @@ parser.add_argument('--dataset', type=str, default='boston', help='which dataset
 parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
-parser.add_argument('--replace', action='store_true', default=False, help='whether to replace existing results')
+parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
 parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
 parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
 args = parser.parse_args()

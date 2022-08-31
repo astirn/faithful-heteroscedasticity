@@ -17,6 +17,8 @@ from tensorflow_probability import layers as tfpl
 # encoder network
 def f_encoder(d_in, dim_z, **kwargs):
     prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
+    # weight = 0.5 is a workaround for: https://github.com/tensorflow/probability/issues/1215
+    dkl = tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True, weight=0.5)
     return tf.keras.Sequential(layers=[
         tf.keras.layers.InputLayer(d_in),
         tf.keras.layers.Conv2D(32, 5, strides=1, padding='same', activation='relu'),
@@ -27,8 +29,7 @@ def f_encoder(d_in, dim_z, **kwargs):
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
         # workaround for: https://github.com/tensorflow/probability/issues/1215
-        tfpl.IndependentNormal(dim_z,
-                               activity_regularizer=tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True, weight=0.5))
+        tfpl.IndependentNormal(dim_z, activity_regularizer=dkl)
     ])
 
 
@@ -56,6 +57,7 @@ if __name__ == '__main__':
     parser.add_argument('--dim_z', type=int, default=10, help='number of latent dimensions')
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
     parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
     parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
     args = parser.parse_args()
@@ -113,10 +115,34 @@ if __name__ == '__main__':
                           run_eagerly=args.debug,
                           metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
-            # train the model
-            model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
-                      batch_size=args.batch_size, epochs=args.epochs, verbose=0,
-                      callbacks=[RegressionCallback(early_stop_patience=100)])
+            # determine where to save model
+            save_path = os.path.join(exp_path, observation, model.name)
+
+            # if we are set to resume and the model directory already contains a saved model, load it
+            if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
+                print(model.name + ' exists. Loading...')
+                checkpoint = tf.train.Checkpoint(model)
+                checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
+
+            # otherwise, train and save the model
+            else:
+                model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
+                          batch_size=args.batch_size, epochs=args.epochs, verbose=0,
+                          callbacks=[RegressionCallback(early_stop_patience=100)])
+                model.save_weights(os.path.join(save_path, 'best_checkpoint'))
+
+            # index for this model and observation type
+            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+            index = pd.MultiIndex.from_tuples([(model_name, observation)], names=['Model', 'Observation'])
+
+            # # save local performance measurements
+            # params = model.predict(x=x_valid, verbose=0)
+            # squared_errors = tf.reduce_sum((y_valid - params['mean']) ** 2, axis=-1)
+            # cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y_valid), axis=-1)
+            # measurements = pd.concat([measurements, pd.DataFrame({
+            #     'squared errors': squared_errors,
+            #     'F(y)': cdf_y,
+            # }, index.repeat(len(y_valid)))])
 
             # measure performance
             py_x = model.predictive_distribution(x=tf.gather(x_valid, i_test))
