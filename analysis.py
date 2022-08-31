@@ -177,7 +177,7 @@ def vae_tables():
                 # analyze each model's performance
                 for index in df_measurements.index.unique():
                     index = pd.Index(data=[index + (latent_dim,)], name=df_measurements.index.names + ['dim($z$)'])
-                    df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
+                    df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset.replace('_', '-'))
                     df_mse = pd.concat([df_mse, df_mse_add])
                     df_ece = pd.concat([df_ece, df_ece_add])
 
