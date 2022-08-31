@@ -28,7 +28,6 @@ def f_encoder(d_in, dim_z, **kwargs):
         tf.keras.layers.Conv2D(128, 7, strides=1, padding='valid', activation='relu'),
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
-        # workaround for: https://github.com/tensorflow/probability/issues/1215
         tfpl.IndependentNormal(dim_z, activity_regularizer=dkl)
     ])
 
@@ -58,13 +57,15 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
-    parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
-    parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
+    parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
     args = parser.parse_args()
 
     # make experimental directory base path
     exp_path = os.path.join('experiments', 'vae', args.dataset, str(args.dim_z))
     os.makedirs(exp_path, exist_ok=True)
+
+    # enable GPU determinism
+    tf.config.experimental.enable_op_determinism()
 
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
@@ -80,7 +81,7 @@ if __name__ == '__main__':
     noise_std = tf.expand_dims(tf.stack(noise_std, axis=0), axis=-1)
 
     # sample additive noise
-    tf.keras.utils.set_random_seed(args.seed_data)
+    tf.keras.utils.set_random_seed(args.seed)
     x_corrupt_train = x_clean_train + tfd.Normal(loc=0, scale=tf.gather(noise_std, train_labels)).sample()
     x_corrupt_valid = x_clean_valid + tfd.Normal(loc=0, scale=tf.gather(noise_std, valid_labels)).sample()
 
@@ -108,13 +109,12 @@ if __name__ == '__main__':
         # loop over models
         for mdl in [models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]:
 
-            # initialize model
-            tf.keras.utils.set_random_seed(args.seed_init)
+            # initialize models
+            tf.keras.utils.set_random_seed(args.seed)
             model = mdl(dim_x=x_train.shape[1:], dim_y=x_train.shape[1:], dim_z=args.dim_z,
                         f_param=f_decoder, f_trunk=f_encoder)
             model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
-                          run_eagerly=args.debug,
-                          metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
+                          run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
             # determine where to save model
             save_path = os.path.join(exp_path, observations, model.name)
@@ -127,6 +127,7 @@ if __name__ == '__main__':
 
             # otherwise, train and save the model
             else:
+                tf.keras.utils.set_random_seed(args.seed)
                 model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
                           batch_size=args.batch_size, epochs=args.epochs, verbose=0,
                           callbacks=[RegressionCallback(early_stop_patience=100)])
@@ -137,6 +138,7 @@ if __name__ == '__main__':
             index = pd.MultiIndex.from_tuples([(model_name, observations)], names=['Model', 'Observations'])
 
             # save local performance measurements
+            tf.keras.utils.set_random_seed(args.seed)
             params = model.predict(x=x_valid, verbose=0)
             squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2)
             cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid))
@@ -144,6 +146,7 @@ if __name__ == '__main__':
                                                                  index.repeat(x_valid.shape[0]))])
 
             # save example images of the model's output
+            tf.keras.utils.set_random_seed(args.seed)
             py_x = model.predictive_distribution(x=tf.gather(x_valid, i_test))
             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
             example_images['Mean'][observations].update({model_name: py_x.mean()})
