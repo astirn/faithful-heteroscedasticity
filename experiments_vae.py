@@ -75,10 +75,12 @@ if __name__ == '__main__':
     i_test = tf.gather(i_test, tf.argsort(tf.gather(valid_labels, i_test)))
 
     # create heteroscedastic noise variance templates
-    noise = tf.tile(tf.expand_dims(tf.linspace(1 / 255, 0.25, 28), axis=1), [1, tf.shape(x_clean_train)[1]])
-    num_classes = tf.unique(train_labels)[0].shape[0]
-    noise_std = [tfa.image.rotate(noise, 360 / num_classes * y, fill_mode='nearest') for y in range(num_classes)]
-    noise_std = tf.expand_dims(tf.stack(noise_std, axis=0), axis=-1)
+    noise = (tf.ones_like(x_clean_train[0]) / 255).numpy()
+    x, y = x_clean_train.shape[1] // 2, x_clean_train.shape[2] // 2
+    noise[x-1:x+2, y:y+y+1] = 0.5
+    k = tf.unique(train_labels)[0].shape[0]
+    noise_std = [tfa.image.rotate(noise, 2 * 3.14 / k * (y + 1), interpolation='bilinear') for y in range(k)]
+    noise_std = tf.stack(noise_std, axis=0)
 
     # sample additive noise
     tf.keras.utils.set_random_seed(args.seed)
