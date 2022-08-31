@@ -15,6 +15,9 @@ from metrics import RootMeanSquaredError
 from sklearn import preprocessing
 from utils import ZScoreNormalization
 
+from tensorflow_probability import distributions as tfd
+
+
 # script arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='boston', help='which dataset to use')
@@ -123,7 +126,7 @@ for fold in np.unique(data['split']):
                     y = y_valid
                     params = {key: z_normalization.scale_parameters(key, values) for key, values in params.items()}
                 squared_errors = tf.reduce_sum((y - params['mean']) ** 2, axis=-1)
-                cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y), axis=-1)
+                cdf_y = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1).cdf(y)
                 measurements = pd.concat([measurements, pd.DataFrame({
                     'normalized': normalized,
                     'squared errors': squared_errors,
