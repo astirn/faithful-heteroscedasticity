@@ -192,7 +192,7 @@ def vae_plots():
     # loop over available example images
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            example_images = os.path.join('experiments', 'vae', dataset, latent_dim, 'test_images.pkl')
+            example_images = os.path.join('experiments', 'vae', dataset, latent_dim, 'example_images.pkl')
             if os.path.exists(example_images):
                 with open(example_images, 'rb') as f:
                     example_images = pickle.load(f)
