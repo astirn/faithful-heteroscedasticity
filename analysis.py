@@ -62,6 +62,8 @@ def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlig
 
 
 def toy_convergence_plots():
+
+    # ensure requisite files exist
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
     metrics_file = os.path.join('experiments', 'convergence', 'metrics.pkl')
     measurements_file = os.path.join('experiments', 'convergence', 'measurements.pkl')
@@ -119,7 +121,7 @@ def toy_convergence_plots():
 
 def uci_tables(normalized):
 
-    # loop over datasets with predictions
+    # loop over datasets with measurements
     df_mse = pd.DataFrame()
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
@@ -161,22 +163,46 @@ def uci_tables(normalized):
             print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
 
 
-def vae_plots():
+def vae_tables():
 
     # loop over available measurements
+    df_mse = pd.DataFrame()
+    df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dims in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dims, 'test_examples.pkl')
+            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dims, 'measurements.pkl')
             if os.path.exists(measurements_file):
-                with open(measurements_file, 'rb') as f:
-                    measurements = pickle.load(f)
+                df_measurements = pd.read_pickle(measurements_file).sort_index()
+
+                # analyze each model's performance
+                for index in df_measurements.index.unique():
+                    index = pd.Index(data=[index], name=df_measurements.index.names)
+                    df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
+                    df_mse = pd.concat([df_mse, df_mse_add])
+                    df_ece = pd.concat([df_ece, df_ece_add])
+
+    # print tables
+    row_cols = ('Dataset', 'Observations')
+    print_table(df_mse.reset_index(), row_cols=row_cols, file_name='vae_mse.tex', null_columns=['MSE'])
+    print_table(df_ece.reset_index(), row_cols=row_cols, file_name='vae_ece.tex', highlight_min=True)
+
+
+def vae_plots():
+
+    # loop over available example images
+    for dataset in os.listdir(os.path.join('experiments', 'vae')):
+        for latent_dims in os.listdir(os.path.join('experiments', 'vae', dataset)):
+            example_images = os.path.join('experiments', 'vae', dataset, latent_dims, 'test_images.pkl')
+            if os.path.exists(example_images):
+                with open(example_images, 'rb') as f:
+                    example_images = pickle.load(f)
 
                 # loop over observation types
                 for observation in ['clean', 'corrupt']:
 
                     # prepare plot and plot original data
                     fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
-                    x = tf.concat(tf.unstack(measurements['Data'][observation]), axis=1)
+                    x = tf.concat(tf.unstack(example_images['Data'][observation]), axis=1)
                     ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1)
                     ax[0].set_title('Data')
                     ax[0].set_xticks([])
@@ -184,8 +210,8 @@ def vae_plots():
 
                     # loop over models
                     for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
-                        mean = tf.concat(tf.unstack(measurements['Mean'][observation][model]), axis=1)
-                        std = tf.concat(tf.unstack(measurements['Std. deviation'][observation][model]), axis=1)
+                        mean = tf.concat(tf.unstack(example_images['Mean'][observation][model]), axis=1)
+                        std = tf.concat(tf.unstack(example_images['Std. deviation'][observation][model]), axis=1)
                         ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=0, vmax=1)
                         ax[i + 1].set_title(model)
                         ax[i + 1].set_xticks([])
@@ -322,7 +348,7 @@ if __name__ == '__main__':
 
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
-        # vae_tables()
+        vae_tables()
         vae_plots()
 
     # CRISPR tables and figures
