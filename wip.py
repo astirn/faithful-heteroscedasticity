@@ -205,3 +205,22 @@
 #
 #         return mu, alpha, beta
 #
+# def crispr_convergence_plots():
+#     if not os.path.exists(os.path.join('experiments', 'crispr')):
+#         return
+#
+#     # loop over datasets with learning metrics
+#     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
+#         metrics_file = os.path.join('experiments', 'crispr', dataset, 'metrics.pkl')
+#         if os.path.exists(metrics_file):
+#             df_metrics = pd.read_pickle(metrics_file).reset_index().set_index('Observation')
+#
+#             # plot learning curves
+#             fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
+#             for i, index in enumerate(df_metrics.index.unique()):
+#                 df = df_metrics.loc[index]
+#                 sns.lineplot(data=df, x='Epoch', y='RMSE', hue='Fold', style='Model', ax=ax[0, i])
+#                 sns.lineplot(data=df, x='Epoch', y='ECE', hue='Fold', style='Model', ax=ax[1, i])
+#             plt.tight_layout()
+#             # fig_learning_curve.savefig(os.path.join('results', 'toy_learning_curve.pdf'))
+#
