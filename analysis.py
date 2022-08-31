@@ -118,8 +118,6 @@ def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlig
 
 
 def uci_tables(normalized):
-    if not os.path.exists(os.path.join('experiments', 'uci')):
-        return
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
@@ -164,8 +162,6 @@ def uci_tables(normalized):
 
 
 def vae_plots():
-    if not os.path.exists(os.path.join('experiments', 'vae')):
-        return
 
     # loop over available measurements
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
@@ -199,8 +195,6 @@ def vae_plots():
 
 
 def crispr_tables():
-    if not os.path.exists(os.path.join('experiments', 'crispr')):
-        return
 
     # loop over datasets with predictions
     df_mse = pd.DataFrame()
@@ -224,8 +218,6 @@ def crispr_tables():
 
 
 def crispr_motif_plots():
-    if not os.path.exists(os.path.join('experiments', 'crispr')):
-        return
 
     def sequence_mask(df):
         return np.array(df.apply(lambda seq: [s == nt for s in seq]).to_list())
@@ -320,20 +312,21 @@ if __name__ == '__main__':
     os.makedirs('results', exist_ok=True)
 
     # convergence experiment
-    if args.experiment in {'all', 'convergence'}:
+    if args.experiment in {'all', 'convergence'} and os.path.exists(os.path.join('experiments', 'convergence')):
         toy_convergence_plots()
 
     # UCI experiments
-    if args.experiment in {'all', 'uci'}:
+    if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):
         uci_tables(normalized=False)
         uci_tables(normalized=True)
 
     # VAE experiments
-    if args.experiment in {'all', 'vae'}:
+    if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
+        # vae_tables()
         vae_plots()
 
     # CRISPR tables and figures
-    if args.experiment in {'all', 'crispr'}:
+    if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
         crispr_motif_plots()
 
