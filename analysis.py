@@ -1,5 +1,6 @@
-import os
+import argparse
 import logomaker
+import os
 import pickle
 
 import matplotlib.pyplot as plt
@@ -310,20 +311,31 @@ def crispr_motif_plots():
 
 if __name__ == '__main__':
 
-    # output directory
-    if not os.path.exists('results'):
-        os.mkdir('results')
+    # parser arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--experiment', type=str, default='all', help='which experiment to analyze')
+    args = parser.parse_args()
 
-    # convergence plots
-    toy_convergence_plots()
+    # make sure output directory exists
+    os.makedirs('data-processed', exist_ok=True)
 
-    # UCI tables
-    uci_tables(normalized=False)
-    uci_tables(normalized=True)
+    # convergence experiment
+    if args.experiment in {'all', 'convergence'}:
+        toy_convergence_plots()
+
+    # UCI experiments
+    if args.experiment in {'all', 'uci'}:
+        uci_tables(normalized=False)
+        uci_tables(normalized=True)
+
+    # VAE experiments
+    if args.experiment in {'all', 'vae'}:
+        vae_plots()
 
     # CRISPR tables and figures
-    crispr_tables()
-    crispr_motif_plots()
+    if args.experiment in {'all', 'crispr'}:
+        crispr_tables()
+        crispr_motif_plots()
 
     # show plots
     plt.show()
