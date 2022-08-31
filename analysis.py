@@ -185,14 +185,14 @@ def vae_plots():
                 ax[0].set_xticks([])
                 ax[0].set_yticks([])
 
-                # loop over models
-                for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
-                    mean = tf.concat(tf.unstack(measurements['Mean'][observation][model]), axis=1)
-                    std = tf.concat(tf.unstack(measurements['Std. Deviation'][observation][model]), axis=1)
-                    ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=0, vmax=1)
-                    ax[i + 1].set_title(model)
-                    ax[i + 1].set_xticks([])
-                    ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
+                    # loop over models
+                    for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
+                        mean = tf.concat(tf.unstack(measurements['Mean'][observation][model]), axis=1)
+                        std = tf.concat(tf.unstack(measurements['Std. deviation'][observation][model]), axis=1)
+                        ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=0, vmax=1)
+                        ax[i + 1].set_title(model)
+                        ax[i + 1].set_xticks([])
+                        ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
             plt.tight_layout()
 
