@@ -3,6 +3,7 @@ import models
 import os
 import pickle
 
+import pandas as pd
 import tensorflow as tf
 import tensorflow_addons as tfa
 
@@ -14,7 +15,6 @@ from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
 
 
-# encoder network
 def f_encoder(d_in, dim_z, **kwargs):
     prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
     # weight = 0.5 is a workaround for: https://github.com/tensorflow/probability/issues/1215
@@ -84,8 +84,8 @@ if __name__ == '__main__':
     x_corrupt_train = x_clean_train + tfd.Normal(loc=0, scale=tf.gather(noise_std, train_labels)).sample()
     x_corrupt_valid = x_clean_valid + tfd.Normal(loc=0, scale=tf.gather(noise_std, valid_labels)).sample()
 
-    # initialize test measurements
-    measurements = {
+    # initialize example image dictionary
+    example_images = {
         'Data': {'clean': tf.gather(x_clean_valid, i_test), 'corrupt': tf.gather(x_corrupt_valid, i_test)},
         'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
         'Mean': {'clean': dict(), 'corrupt': dict()},
@@ -93,13 +93,14 @@ if __name__ == '__main__':
     }
 
     # loop over observation types
-    for observation in ['clean', 'corrupt']:
-        print('******************** Observing: {:s} data ********************'.format(observation))
+    measurements = pd.DataFrame()
+    for observations in ['clean', 'corrupt']:
+        print('******************** Observing: {:s} data ********************'.format(observations))
 
         # select training/validation data according to observation type
-        if observation == 'clean':
+        if observations == 'clean':
             x_train, x_valid = x_clean_train, x_clean_valid
-        elif observation == 'corrupt':
+        elif observations == 'corrupt':
             x_train, x_valid = x_corrupt_train, x_corrupt_valid
         else:
             raise NotImplementedError
@@ -116,7 +117,7 @@ if __name__ == '__main__':
                           metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
             # determine where to save model
-            save_path = os.path.join(exp_path, observation, model.name)
+            save_path = os.path.join(exp_path, observations, model.name)
 
             # if we are set to resume and the model directory already contains a saved model, load it
             if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
@@ -133,23 +134,24 @@ if __name__ == '__main__':
 
             # index for this model and observation type
             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            index = pd.MultiIndex.from_tuples([(model_name, observation)], names=['Model', 'Observation'])
+            index = pd.MultiIndex.from_tuples([(model_name, observations)], names=['Model', 'Observations'])
 
-            # # save local performance measurements
-            # params = model.predict(x=x_valid, verbose=0)
-            # squared_errors = tf.reduce_sum((y_valid - params['mean']) ** 2, axis=-1)
-            # cdf_y = tf.reduce_sum(model.predictive_distribution(**params).cdf(y_valid), axis=-1)
-            # measurements = pd.concat([measurements, pd.DataFrame({
-            #     'squared errors': squared_errors,
-            #     'F(y)': cdf_y,
-            # }, index.repeat(len(y_valid)))])
+            # save local performance measurements
+            params = model.predict(x=x_valid, verbose=0)
+            squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2)
+            cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid))
+            measurements = pd.concat([measurements, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
+                                                                 index.repeat(x_valid.shape[0]))])
 
-            # measure performance
+            # save example images of the model's output
             py_x = model.predictive_distribution(x=tf.gather(x_valid, i_test))
             model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            measurements['Mean'][observation].update({model_name: py_x.mean()})
-            measurements['Std. deviation'][observation].update({model_name: py_x.stddev()})
+            example_images['Mean'][observations].update({model_name: py_x.mean()})
+            example_images['Std. deviation'][observations].update({model_name: py_x.stddev()})
 
     # save performance measures
-    with open(os.path.join(exp_path, 'measurements.pkl'), 'wb') as f:
-        pickle.dump(measurements, f)
+    measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+
+    # save example images
+    with open(os.path.join(exp_path, 'example_images.pkl'), 'wb') as f:
+        pickle.dump(example_images, f)
