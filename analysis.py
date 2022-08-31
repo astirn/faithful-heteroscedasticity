@@ -169,20 +169,20 @@ def vae_tables():
     df_mse = pd.DataFrame()
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        for latent_dims in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dims, 'measurements.pkl')
+        for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
+            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'measurements.pkl')
             if os.path.exists(measurements_file):
                 df_measurements = pd.read_pickle(measurements_file).sort_index()
 
                 # analyze each model's performance
                 for index in df_measurements.index.unique():
-                    index = pd.Index(data=[index], name=df_measurements.index.names)
+                    index = pd.Index(data=[index + (latent_dim,)], name=df_measurements.index.names + ['dim($z$)'])
                     df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
                     df_mse = pd.concat([df_mse, df_mse_add])
                     df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    row_cols = ('Dataset', 'Observations')
+    row_cols = ('Dataset', 'dim($z$)', 'Observations')
     print_table(df_mse.reset_index(), row_cols=row_cols, file_name='vae_mse.tex', null_columns=['MSE'])
     print_table(df_ece.reset_index(), row_cols=row_cols, file_name='vae_ece.tex', highlight_min=True)
 
@@ -191,8 +191,8 @@ def vae_plots():
 
     # loop over available example images
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        for latent_dims in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            example_images = os.path.join('experiments', 'vae', dataset, latent_dims, 'test_images.pkl')
+        for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
+            example_images = os.path.join('experiments', 'vae', dataset, latent_dim, 'test_images.pkl')
             if os.path.exists(example_images):
                 with open(example_images, 'rb') as f:
                     example_images = pickle.load(f)

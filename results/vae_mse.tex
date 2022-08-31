@@ -1,10 +1,10 @@
-\begin{tabular}{ll|l|ll|ll}
+\begin{tabular}{lll|l|ll|ll}
 \toprule
- &  & Unit Variance & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
- &  & MSE & MSE & Welch's $p$ & MSE & Welch's $p$ \\
-Dataset & Observations &  &  &  &  &  \\
+ &  &  & Unit Variance & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
+ &  &  & MSE & MSE & Welch's $p$ & MSE & Welch's $p$ \\
+Dataset & dim($z$) & Observations &  &  &  &  &  \\
 \midrule
-\multirow[c]{2}{*}{mnist} & clean & 74 & \sout{88} & 8.9e-275 & 74 & 0.5 \\
- & corrupt & 91 & \sout{1.1e+02} & 3.3e-254 & 91 & 0.5 \\
+\multirow[c]{2}{*}{mnist} & \multirow[c]{2}{*}{10} & clean & 74 & \sout{88} & 8.9e-275 & 74 & 0.5 \\
+ &  & corrupt & 91 & \sout{1.1e+02} & 3.3e-254 & 91 & 0.5 \\
 \bottomrule
 \end{tabular}
