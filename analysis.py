@@ -11,6 +11,56 @@ import seaborn as sns
 import tensorflow as tf
 
 
+def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+
+    # MSE
+    squared_errors = df_measurements.loc[index, 'squared errors']
+    null_index = 'Unit Variance'
+    if isinstance(index, pd.MultiIndex):
+        null_index = index.set_levels([null_index], level='Model')
+    null_squared_errors = df_measurements.loc[null_index, 'squared errors']
+    mse = squared_errors.mean()
+    p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
+    # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
+    mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
+    p = '$H_0$' if index == null_index else '{:.2g}'.format(p)
+    df_mse = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
+
+    # ECE
+    cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
+    p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
+    if ece_method == 'one-sided':
+        p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
+        ece = '{:.2g}'.format(np.sum((p - p_hat) ** 2))
+    elif ece_method == 'two-sided':
+        p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
+        ece = '{:.2g}'.format(np.sum((1 / ece_bins - np.array(p_hat)) ** 2))
+    else:
+        raise NotImplementedError
+    df_ece = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
+
+    return df_mse, df_ece
+
+
+def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlight_min=False):
+
+    # rearrange table for LaTeX
+    df = df.set_index('Model')
+    df_latex = df.melt(id_vars=row_cols, value_vars=[c for c in df.columns if c not in row_cols], ignore_index=False)
+    df_latex = df_latex.reset_index()
+    df_latex = df_latex.pivot(index=row_cols, columns=['Model', 'variable'], values='value')
+    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', null_columns or slice(None))],
+                          df_latex[['Heteroscedastic']],
+                          df_latex[['Faithful Heteroscedastic']]], axis=1)
+    style = df_latex.style.hide(axis=1, names=True)
+    if highlight_min:
+        style = style.highlight_min(props='bfseries:;', axis=1)
+    col_fmt = 'l' * len(row_cols)
+    col_fmt += ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
+    style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True)
+    # multicol_align='p{2cm}'
+
+
 def toy_convergence_plots():
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
     metrics_file = os.path.join('experiments', 'convergence', 'metrics.pkl')
@@ -65,56 +115,6 @@ def toy_convergence_plots():
     ax[1, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     plt.tight_layout()
     fig_convergence.savefig(os.path.join('results', 'toy_convergence.pdf'))
-
-
-def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
-
-    # MSE
-    squared_errors = df_measurements.loc[index, 'squared errors']
-    null_index = 'Unit Variance'
-    if isinstance(index, pd.MultiIndex):
-        null_index = index.set_levels([null_index], level='Model')
-    null_squared_errors = df_measurements.loc[null_index, 'squared errors']
-    mse = squared_errors.mean()
-    p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
-    # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
-    mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
-    p = '$H_0$' if index == null_index else '{:.2g}'.format(p)
-    df_mse = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
-
-    # ECE
-    cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
-    p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-    if ece_method == 'one-sided':
-        p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
-        ece = '{:.2g}'.format(np.sum((p - p_hat) ** 2))
-    elif ece_method == 'two-sided':
-        p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
-        ece = '{:.2g}'.format(np.sum((1 / ece_bins - np.array(p_hat)) ** 2))
-    else:
-        raise NotImplementedError
-    df_ece = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
-
-    return df_mse, df_ece
-
-
-def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlight_min=False):
-
-    # rearrange table for LaTeX
-    df = df.set_index('Model')
-    df_latex = df.melt(id_vars=row_cols, value_vars=[c for c in df.columns if c not in row_cols], ignore_index=False)
-    df_latex = df_latex.reset_index()
-    df_latex = df_latex.pivot(index=row_cols, columns=['Model', 'variable'], values='value')
-    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', null_columns or slice(None))],
-                          df_latex[['Heteroscedastic']],
-                          df_latex[['Faithful Heteroscedastic']]], axis=1)
-    style = df_latex.style.hide(axis=1, names=True)
-    if highlight_min:
-        style = style.highlight_min(props='bfseries:;', axis=1)
-    col_fmt = 'l' * len(row_cols)
-    col_fmt += ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
-    style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True)
-    # multicol_align='p{2cm}'
 
 
 def uci_tables(normalized):
