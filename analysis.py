@@ -170,7 +170,7 @@ def vae_plots():
     # loop over available measurements
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dims in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dims, 'measurements.pkl')
+            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dims, 'test_examples.pkl')
             if os.path.exists(measurements_file):
                 with open(measurements_file, 'rb') as f:
                     measurements = pickle.load(f)
@@ -317,7 +317,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # make sure output directory exists
-    os.makedirs('data-processed', exist_ok=True)
+    os.makedirs('results', exist_ok=True)
 
     # convergence experiment
     if args.experiment in {'all', 'convergence'}:
