@@ -147,10 +147,11 @@ if __name__ == '__main__':
             # save local performance measurements
             tf.keras.utils.set_random_seed(args.seed)
             params = model.predict(x=x_valid, verbose=0)
-            squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2)
-            cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid))
+            num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
+            squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels
+            cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid)) / num_pixels
             measurements = pd.concat([measurements, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
-                                                                 index.repeat(x_valid.shape[0]))])
+                                                                 index.repeat(len(squared_errors)))])
 
             # save example images of the model's output
             tf.keras.utils.set_random_seed(args.seed)

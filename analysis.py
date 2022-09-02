@@ -200,24 +200,51 @@ def vae_plots():
                 # loop over observation types
                 for observation in ['clean', 'corrupt']:
 
-                    # prepare plot and plot original data
+                    # prepare performance plot
                     fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
                     x = tf.concat(tf.unstack(example_images['Data'][observation]), axis=1)
-                    ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1)
+                    ax[0].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
                     ax[0].set_title('Data')
                     ax[0].set_xticks([])
                     ax[0].set_yticks([])
 
-                    # loop over models
+                    # plot each model's performance
                     for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
                         mean = tf.concat(tf.unstack(example_images['Mean'][observation][model]), axis=1)
-                        std = tf.concat(tf.unstack(example_images['Std. deviation'][observation][model]), axis=1)
-                        ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=0, vmax=1)
+                        std = tf.concat(tf.unstack(example_images['Std. deviation'][observation][model]), axis=1) - 0.5
+                        ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
                         ax[i + 1].set_title(model)
                         ax[i + 1].set_xticks([])
                         ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
+                    # finalize and save figures
                     plt.tight_layout()
+
+                # prepare variance decomposition plot plot
+                fig, ax = plt.subplots(nrows=3, figsize=(10, 10))
+                x = tf.concat(tf.unstack(example_images['Noise variance']['corrupt']), axis=1) ** 0.5
+                ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
+                ax[0].set_title('$\\sqrt{\\mathrm{noise \\ variance}}$')
+                ax[0].set_xticks([])
+                ax[0].set_yticks([])
+
+                # loop over heteroscedastic models
+                for i, model in enumerate(['Heteroscedastic', 'Faithful Heteroscedastic']):
+                    std_clean = tf.concat(tf.unstack(example_images['Std. deviation']['clean'][model]), axis=1)
+                    std_corrupt = tf.concat(tf.unstack(example_images['Std. deviation']['corrupt'][model]), axis=1)
+                    std_noise = np.clip(std_corrupt - std_clean, 0, np.inf)
+                    std = np.concatenate([std_clean, std_corrupt, std_noise], axis=0)
+                    ax[i + 1].imshow(std, cmap='gray_r', vmin=0, vmax=1.0)
+                    ax[i + 1].set_title(model)
+                    ax[i + 1].set_xticks([])
+                    ax[i + 1].set_yticks([round(std_clean.shape[0] * (i + 0.5)) for i in range(3)],
+                                         ['$\\sigma(x_\\mathrm{clean})$',
+                                          '$\\sigma(x_\\mathrm{corrupt})$',
+                                          '$\\sigma(x_\\mathrm{corrupt}) - \\sigma(x_\\mathrm{clean})$'],
+                                         rotation=30)
+
+                # finalize and save figures
+                plt.tight_layout()
 
 
 def crispr_tables():
