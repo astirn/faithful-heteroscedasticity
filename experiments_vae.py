@@ -3,6 +3,7 @@ import models
 import os
 import pickle
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -55,7 +56,7 @@ if __name__ == '__main__':
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--dim_z', type=int, default=10, help='number of latent dimensions')
     parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--learning_rate', type=float, default=5e-5, help='learning rate')
     parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
     parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
     args = parser.parse_args()
@@ -77,7 +78,7 @@ if __name__ == '__main__':
     # create heteroscedastic noise variance templates
     noise = (tf.ones_like(x_clean_train[0]) / 255).numpy()
     x, y = x_clean_train.shape[1] // 2, x_clean_train.shape[2] // 2
-    noise[x-1:x+2, y:y+y+1] = 0.5
+    noise[x - 2: x + 3, y: 2 * y + 1] = 0.25
     k = tf.unique(train_labels)[0].shape[0]
     noise_std = [tfa.image.rotate(noise, 2 * 3.14 / k * (y + 1), interpolation='bilinear') for y in range(k)]
     noise_std = tf.stack(noise_std, axis=0)
@@ -96,6 +97,7 @@ if __name__ == '__main__':
     }
 
     # loop over observation types
+    metrics = pd.DataFrame()
     measurements = pd.DataFrame()
     for observations in ['clean', 'corrupt']:
         print('******************** Observing: {:s} data ********************'.format(observations))
@@ -118,6 +120,10 @@ if __name__ == '__main__':
             model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                           run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
+            # index for this model and observation type
+            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+            index = pd.MultiIndex.from_tuples([(model_name, observations)], names=['Model', 'Observations'])
+
             # determine where to save model
             save_path = os.path.join(exp_path, observations, model.name)
 
@@ -130,14 +136,13 @@ if __name__ == '__main__':
             # otherwise, train and save the model
             else:
                 tf.keras.utils.set_random_seed(args.seed)
-                model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
-                          batch_size=args.batch_size, epochs=args.epochs, verbose=0,
-                          callbacks=[RegressionCallback(early_stop_patience=100)])
+                hist = model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
+                                 batch_size=args.batch_size, epochs=args.epochs, verbose=0,
+                                 callbacks=[RegressionCallback(early_stop_patience=100)])
                 model.save_weights(os.path.join(save_path, 'best_checkpoint'))
-
-            # index for this model and observation type
-            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            index = pd.MultiIndex.from_tuples([(model_name, observations)], names=['Model', 'Observations'])
+                metrics = pd.concat([metrics, pd.DataFrame(
+                    data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
+                    index=index.repeat(len(hist.epoch)))])
 
             # save local performance measurements
             tf.keras.utils.set_random_seed(args.seed)
@@ -154,9 +159,8 @@ if __name__ == '__main__':
             example_images['Mean'][observations].update({model_name: py_x.mean()})
             example_images['Std. deviation'][observations].update({model_name: py_x.stddev()})
 
-    # save performance measures
+    # save metrics, performance measures, and example images
+    metrics.to_pickle(os.path.join(exp_path, 'metrics.pkl'))
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
-
-    # save example images
     with open(os.path.join(exp_path, 'example_images.pkl'), 'wb') as f:
         pickle.dump(example_images, f)
