@@ -10,7 +10,7 @@ import tensorflow_addons as tfa
 
 from callbacks import RegressionCallback
 from datasets import load_tensorflow_dataset
-from metrics import RootMeanSquaredError, ExpectedCalibrationError
+from metrics import RootMeanSquaredError
 
 from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
@@ -96,8 +96,11 @@ if __name__ == '__main__':
         'Std. deviation':  {'clean': dict(), 'corrupt': dict()},
     }
 
+    # initialize/load optimization history
+    opti_history_file = os.path.join(exp_path, 'optimization_history.pkl')
+    optimization_history = pd.read_pickle(opti_history_file) if os.path.exists(opti_history_file) else pd.DataFrame()
+
     # loop over observation types
-    metrics = pd.DataFrame()
     measurements = pd.DataFrame()
     for observations in ['clean', 'corrupt']:
         print('******************** Observing: {:s} data ********************'.format(observations))
@@ -127,8 +130,10 @@ if __name__ == '__main__':
             # determine where to save model
             save_path = os.path.join(exp_path, observations, model.name)
 
-            # if we are set to resume and the model directory already contains a saved model, load it
-            if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
+            # if we are set to resume and a trained model and its optimization history exist, load the existing model
+            if not bool(args.replace) \
+               and os.path.exists(os.path.join(save_path, 'checkpoint')) \
+               and index.isin(optimization_history.index):
                 print(model.name + ' exists. Loading...')
                 checkpoint = tf.train.Checkpoint(model)
                 checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
@@ -140,7 +145,8 @@ if __name__ == '__main__':
                                  batch_size=args.batch_size, epochs=args.epochs, verbose=0,
                                  callbacks=[RegressionCallback(early_stop_patience=100)])
                 model.save_weights(os.path.join(save_path, 'best_checkpoint'))
-                metrics = pd.concat([metrics, pd.DataFrame(
+                optimization_history.drop(index, inplace=True)
+                optimization_history = pd.concat([optimization_history, pd.DataFrame(
                     data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
                     index=index.repeat(len(hist.epoch)))])
 
@@ -161,7 +167,7 @@ if __name__ == '__main__':
             example_images['Std. deviation'][observations].update({model_name: py_x.stddev()})
 
     # save metrics, performance measures, and example images
-    metrics.to_pickle(os.path.join(exp_path, 'metrics.pkl'))
+    optimization_history.to_pickle(opti_history_file)
     measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
     with open(os.path.join(exp_path, 'example_images.pkl'), 'wb') as f:
         pickle.dump(example_images, f)
