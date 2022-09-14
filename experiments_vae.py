@@ -101,7 +101,7 @@ if __name__ == '__main__':
     optimization_history = pd.read_pickle(opti_history_file) if os.path.exists(opti_history_file) else pd.DataFrame()
 
     # loop over observation types
-    measurements = pd.DataFrame()
+    performance = pd.DataFrame()
     for observations in ['clean', 'corrupt']:
         print('******************** Observing: {:s} data ********************'.format(observations))
 
@@ -145,29 +145,29 @@ if __name__ == '__main__':
                                  batch_size=args.batch_size, epochs=args.epochs, verbose=0,
                                  callbacks=[RegressionCallback(early_stop_patience=100)])
                 model.save_weights(os.path.join(save_path, 'best_checkpoint'))
-                optimization_history.drop(index, inplace=True)
+                if index.isin(optimization_history.index):
+                    optimization_history.drop(index, inplace=True)
                 optimization_history = pd.concat([optimization_history, pd.DataFrame(
                     data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
                     index=index.repeat(len(hist.epoch)))])
+                optimization_history.to_pickle(opti_history_file)
 
-            # save local performance measurements
+            # generate predictions on the validation set
             tf.keras.utils.set_random_seed(args.seed)
             params = model.predict(x=x_valid, verbose=0)
+
+            # save performance measurements
             num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
             squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels
             cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid)) / num_pixels
-            measurements = pd.concat([measurements, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
-                                                                 index.repeat(len(squared_errors)))])
+            performance = pd.concat([performance, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
+                                                               index.repeat(len(squared_errors)))])
 
-            # save example images of the model's output
-            tf.keras.utils.set_random_seed(args.seed)
-            py_x = model.predictive_distribution(x=tf.gather(x_valid, i_test))
-            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            example_images['Mean'][observations].update({model_name: py_x.mean()})
-            example_images['Std. deviation'][observations].update({model_name: py_x.stddev()})
+            # save model outputs
+            example_images['Mean'][observations].update({model_name: params['mean']})
+            example_images['Std. deviation'][observations].update({model_name: params['std']})
 
-    # save metrics, performance measures, and example images
-    optimization_history.to_pickle(opti_history_file)
-    measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+    # save performance measures and model outputs
+    performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
     with open(os.path.join(exp_path, 'example_images.pkl'), 'wb') as f:
         pickle.dump(example_images, f)
