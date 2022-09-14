@@ -71,10 +71,6 @@ if __name__ == '__main__':
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
 
-    # select a test set to plot sorted by class label
-    i_test = tf.concat([tf.where(tf.equal(valid_labels, k))[0] for k in tf.unique(valid_labels)[0]], axis=0)
-    i_test = tf.gather(i_test, tf.argsort(tf.gather(valid_labels, i_test)))
-
     # create heteroscedastic noise variance templates
     noise = (tf.ones_like(x_clean_train[0]) / 255).numpy()
     x, y = x_clean_train.shape[1] // 2, x_clean_train.shape[2] // 2
@@ -89,8 +85,9 @@ if __name__ == '__main__':
     x_corrupt_valid = x_clean_valid + tfd.Normal(loc=0, scale=tf.gather(noise_std, valid_labels)).sample()
 
     # initialize example image dictionary
-    example_images = {
-        'Data': {'clean': tf.gather(x_clean_valid, i_test), 'corrupt': tf.gather(x_corrupt_valid, i_test)},
+    model_outputs = {
+        'Class labels': valid_labels,
+        'Data': {'clean': x_clean_valid, 'corrupt': x_corrupt_valid},
         'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
         'Mean': {'clean': dict(), 'corrupt': dict()},
         'Std. deviation':  {'clean': dict(), 'corrupt': dict()},
@@ -164,10 +161,10 @@ if __name__ == '__main__':
                                                                index.repeat(len(squared_errors)))])
 
             # save model outputs
-            example_images['Mean'][observations].update({model_name: params['mean']})
-            example_images['Std. deviation'][observations].update({model_name: params['std']})
+            model_outputs['Mean'][observations].update({model_name: params['mean']})
+            model_outputs['Std. deviation'][observations].update({model_name: params['std']})
 
     # save performance measures and model outputs
     performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
-    with open(os.path.join(exp_path, 'example_images.pkl'), 'wb') as f:
-        pickle.dump(example_images, f)
+    with open(os.path.join(exp_path, 'model_outputs.pkl'), 'wb') as f:
+        pickle.dump(model_outputs, f)
