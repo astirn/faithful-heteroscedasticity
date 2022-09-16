@@ -209,52 +209,59 @@ def vae_plots(examples_per_class=1):
                     i_class = tf.where(tf.equal(plot_dict['Class labels'], k))
                     i_plot = tf.concat([i_plot, tf.random.shuffle(i_class)[:examples_per_class, 0]], axis=0)
 
-                # loop over observation types
-                for observation in ['clean', 'corrupt']:
+                # prepare performance plot
+                fig, ax = plt.subplots(nrows=4, ncols=2, figsize=(20, 10))
+                fig.suptitle(dataset.format(latent_dim))
 
-                    # prepare performance plot
-                    fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
-                    fig.suptitle(dataset + ' (dim($z$) = {:})'.format(latent_dim))
+                # loop over observation types
+                for col, observation in enumerate(['clean', 'corrupt']):
+
+                    # plot data
                     x = concat_examples(plot_dict['Data'][observation], i_plot)
-                    ax[0].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
-                    ax[0].set_title('Data')
-                    ax[0].set_xticks([])
-                    ax[0].set_yticks([])
+                    ax[0, col].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
+                    ax[0, col].set_title('Data')
+                    ax[0, col].set_xticks([])
+                    ax[0, col].set_yticks([])
 
                     # plot each model's performance
                     for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
                         mean = concat_examples(plot_dict['Mean'][observation][model], i_plot)
                         std = concat_examples(plot_dict['Std. deviation'][observation][model], i_plot) - 0.5
-                        ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
-                        ax[i + 1].set_title(model)
-                        ax[i + 1].set_xticks([])
-                        ax[i + 1].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
+                        ax[i + 1, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
+                        ax[i + 1, col].set_title(model + 'w/ dim($z$) = {:}'.format(latent_dim))
+                        ax[i + 1, col].set_xticks([])
+                        ax[i + 1, col].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
                     # finalize and save figures
                     plt.tight_layout()
 
-                # prepare variance decomposition plot plot
-                fig, ax = plt.subplots(nrows=3, figsize=(10, 10))
-                x = tf.concat(tf.unstack(example_images['Noise variance']['corrupt']), axis=1) ** 0.5
+                # prepare variance decomposition plot
+                fig, ax = plt.subplots(nrows=3, figsize=(10, 5))
+                x = concat_examples(plot_dict['Noise variance']['corrupt']) ** 0.5
                 ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
-                ax[0].set_title('$\\sqrt{\\mathrm{noise \\ variance}}$')
+                ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
                 ax[0].set_xticks([])
                 ax[0].set_yticks([])
 
                 # loop over heteroscedastic models
                 for i, model in enumerate(['Heteroscedastic', 'Faithful Heteroscedastic']):
-                    std_clean = tf.concat(tf.unstack(example_images['Std. deviation']['clean'][model]), axis=1)
-                    std_corrupt = tf.concat(tf.unstack(example_images['Std. deviation']['corrupt'][model]), axis=1)
-                    std_noise = np.clip(std_corrupt - std_clean, 0, np.inf)
-                    std = np.concatenate([std_clean, std_corrupt, std_noise], axis=0)
-                    ax[i + 1].imshow(std, cmap='gray_r', vmin=0, vmax=1.0)
-                    ax[i + 1].set_title(model)
+
+                    # find average noise variance per class
+                    std_clean = plot_dict['Std. deviation']['clean'][model]
+                    std_corrupt = plot_dict['Std. deviation']['corrupt'][model]
+                    mean_std_noise = []
+                    for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
+                        i_class = tf.squeeze(tf.where(tf.equal(plot_dict['Class labels'], k)))
+                        std_noise = tf.gather(std_corrupt, i_class) - tf.gather(std_clean, i_class)
+                        std_noise = tf.clip_by_value(std_noise, 0, np.inf)
+                        mean_std_noise += [tf.reduce_mean(std_noise, axis=0)]
+                    mean_std_noise = tf.concat(mean_std_noise, axis=1)
+
+                    # plot recovered noise variance
+                    ax[i + 1].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
+                    ax[i + 1].set_title(model + 'w/ dim($z$) = {:}'.format(latent_dim))
                     ax[i + 1].set_xticks([])
-                    ax[i + 1].set_yticks([round(std_clean.shape[0] * (i + 0.5)) for i in range(3)],
-                                         ['$\\sigma(x_\\mathrm{clean})$',
-                                          '$\\sigma(x_\\mathrm{corrupt})$',
-                                          '$\\sigma(x_\\mathrm{corrupt}) - \\sigma(x_\\mathrm{clean})$'],
-                                         rotation=30)
+                    ax[i + 1].set_yticks([])
 
                 # finalize and save figures
                 plt.tight_layout()
@@ -372,6 +379,7 @@ if __name__ == '__main__':
     # parser arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--experiment', type=str, default='all', help='which experiment to analyze')
+    parser.add_argument('--seed', type=int, default=853211, help='random number seed for reproducibility')
     args = parser.parse_args()
 
     # make sure output directory exists
