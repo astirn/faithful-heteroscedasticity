@@ -111,60 +111,64 @@ if __name__ == '__main__':
             raise NotImplementedError
 
         # loop over models
-        for mdl in [models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]:
+        for i, mdl in enumerate([models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]):
 
-            # initialize models
-            tf.keras.utils.set_random_seed(args.seed)
-            model = mdl(dim_x=x_train.shape[1:], dim_y=x_train.shape[1:], dim_z=args.dim_z,
-                        f_param=f_decoder, f_trunk=f_encoder)
-            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
-                          run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
+            # loop over architectures
+            for architecture in (['single'] if i == 0 else ['shared']):
 
-            # index for this model and observation type
-            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            index = pd.MultiIndex.from_tuples([(model_name, observations)], names=['Model', 'Observations'])
-
-            # determine where to save model
-            save_path = os.path.join(exp_path, observations, model.name)
-
-            # if we are set to resume and a trained model and its optimization history exist, load the existing model
-            if not bool(args.replace) \
-               and os.path.exists(os.path.join(save_path, 'checkpoint')) \
-               and index.isin(optimization_history.index):
-                print(model.name + ' exists. Loading...')
-                checkpoint = tf.train.Checkpoint(model)
-                checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
-
-            # otherwise, train and save the model
-            else:
+                # initialize models
                 tf.keras.utils.set_random_seed(args.seed)
-                hist = model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
-                                 batch_size=args.batch_size, epochs=args.epochs, verbose=0,
-                                 callbacks=[RegressionCallback(early_stop_patience=100)])
-                model.save_weights(os.path.join(save_path, 'best_checkpoint'))
-                if index.isin(optimization_history.index):
-                    optimization_history.drop(index, inplace=True)
-                optimization_history = pd.concat([optimization_history, pd.DataFrame(
-                    data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
-                    index=index.repeat(len(hist.epoch)))])
-                optimization_history.to_pickle(opti_history_file)
+                model = mdl(dim_x=x_train.shape[1:], dim_y=x_train.shape[1:], dim_z=args.dim_z,
+                            f_param=f_decoder, f_trunk=f_encoder)
+                model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                              run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
-            # generate predictions on the validation set
-            tf.keras.utils.set_random_seed(args.seed)
-            params = model.predict(x=x_valid, verbose=0)
+                # index for this model and observation type
+                model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+                index = pd.MultiIndex.from_tuples([(model_name, architecture, observations)],
+                                                  names=['Model', 'Architecture', 'Observations'])
 
-            # save performance measurements
-            num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
-            squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels
-            cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid)) / num_pixels
-            performance = pd.concat([performance, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
-                                                               index.repeat(len(squared_errors)))])
+                # determine where to save model
+                save_path = os.path.join(exp_path, observations, ''.join([model.name, architecture.capitalize()]))
 
-            # save model outputs
-            plot_dict['Mean'][observations].update({model_name: params['mean']})
-            plot_dict['Std. deviation'][observations].update({model_name: params['std']})
+                # if set to resume and a trained model and its optimization history exist, load the existing model
+                if not bool(args.replace) \
+                   and os.path.exists(os.path.join(save_path, 'checkpoint')) \
+                   and index.isin(optimization_history.index):
+                    print(model.name + ' exists. Loading...')
+                    checkpoint = tf.train.Checkpoint(model)
+                    checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
 
-    # save performance measures and model outputs
-    performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
-    with open(os.path.join(exp_path, 'plot_dictionary.pkl'), 'wb') as f:
-        pickle.dump(plot_dict, f)
+                # otherwise, train and save the model
+                else:
+                    tf.keras.utils.set_random_seed(args.seed)
+                    hist = model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
+                                     batch_size=args.batch_size, epochs=args.epochs, verbose=0,
+                                     callbacks=[RegressionCallback(early_stop_patience=100)])
+                    model.save_weights(os.path.join(save_path, 'best_checkpoint'))
+                    if index.isin(optimization_history.index):
+                        optimization_history.drop(index, inplace=True)
+                    optimization_history = pd.concat([optimization_history, pd.DataFrame(
+                        data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
+                        index=index.repeat(len(hist.epoch)))])
+                    optimization_history.to_pickle(opti_history_file)
+
+                # generate predictions on the validation set
+                tf.keras.utils.set_random_seed(args.seed)
+                params = model.predict(x=x_valid, verbose=0)
+
+                # save performance measurements
+                num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
+                squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels
+                cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid)) / num_pixels
+                performance = pd.concat([performance, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
+                                                                   index.repeat(len(squared_errors)))])
+
+                # save model outputs
+                plot_dict['Mean'][observations].update({model_name: params['mean']})
+                plot_dict['Std. deviation'][observations].update({model_name: params['std']})
+
+        # save performance measures and model outputs
+        performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
+        with open(os.path.join(exp_path, 'plot_dictionary.pkl'), 'wb') as f:
+            pickle.dump(plot_dict, f)
