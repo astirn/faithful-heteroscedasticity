@@ -170,7 +170,7 @@ def vae_tables():
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'measurements.pkl')
+            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'performance.pkl')
             if os.path.exists(measurements_file):
                 df_measurements = pd.read_pickle(measurements_file).sort_index()
 
@@ -187,22 +187,35 @@ def vae_tables():
     print_table(df_ece.reset_index(), row_cols=row_cols, file_name='vae_ece.tex', highlight_min=True)
 
 
-def vae_plots():
+def vae_plots(examples_per_class=1):
+
+    # utility function vae plots
+    def concat_examples(output, indices=None):
+        output = output if indices is None else tf.gather(output, indices)
+        return tf.concat(tf.unstack(output), axis=1)
 
     # loop over available example images
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            example_images = os.path.join('experiments', 'vae', dataset, latent_dim, 'example_images.pkl')
-            if os.path.exists(example_images):
-                with open(example_images, 'rb') as f:
-                    example_images = pickle.load(f)
+            model_outputs = os.path.join('experiments', 'vae', dataset, latent_dim, 'model_outputs.pkl')
+            if os.path.exists(model_outputs):
+                with open(model_outputs, 'rb') as f:
+                    model_outputs = pickle.load(f)
+
+                # randomly select some examples of each class to plot
+                tf.keras.utils.set_random_seed(args.seed)
+                i_plot = tf.zeros(shape=0, dtype=tf.int64)
+                for k in tf.sort(tf.unique(model_outputs['Class labels'])[0]):
+                    i_class = tf.where(tf.equal(model_outputs['Class labels'], k))
+                    i_plot = tf.concat([i_plot, tf.random.shuffle(i_class)[:examples_per_class, 0]], axis=0)
 
                 # loop over observation types
                 for observation in ['clean', 'corrupt']:
 
                     # prepare performance plot
                     fig, ax = plt.subplots(nrows=4, figsize=(10, 10))
-                    x = tf.concat(tf.unstack(example_images['Data'][observation]), axis=1)
+                    fig.suptitle(dataset + ' (dim($z$) = {:})'.format(latent_dim))
+                    x = concat_examples(model_outputs['Data'][observation], i_plot)
                     ax[0].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
                     ax[0].set_title('Data')
                     ax[0].set_xticks([])
@@ -210,8 +223,8 @@ def vae_plots():
 
                     # plot each model's performance
                     for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
-                        mean = tf.concat(tf.unstack(example_images['Mean'][observation][model]), axis=1)
-                        std = tf.concat(tf.unstack(example_images['Std. deviation'][observation][model]), axis=1) - 0.5
+                        mean = concat_examples(model_outputs['Mean'][observation][model], i_plot)
+                        std = concat_examples(model_outputs['Std. deviation'][observation][model], i_plot) - 0.5
                         ax[i + 1].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
                         ax[i + 1].set_title(model)
                         ax[i + 1].set_xticks([])
