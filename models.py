@@ -86,7 +86,7 @@ class UnitVariance(Regression, ABC):
             self.f_trunk = lambda x, **k: x
             self.f_mean = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
         else:
-            self.f_trunk = f_trunk(dim_x)
+            self.f_trunk = f_trunk(dim_x, **kwargs)
             dim_latent = self.f_trunk.output_shape[1:]
             assert len(dim_latent) == 1
             self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
@@ -100,6 +100,7 @@ class UnitVariance(Regression, ABC):
             params = self.call(x, training=True)
             py_x = tfpd.Independent(tfpd.Normal(loc=params['mean'], scale=1.0), reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_x.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
 
@@ -115,7 +116,7 @@ class Heteroscedastic(Regression, ABC):
             self.f_mean = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
             self.f_scale = f_param(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
         else:
-            self.f_trunk = f_trunk(dim_x)
+            self.f_trunk = f_trunk(dim_x, **kwargs)
             dim_latent = self.f_trunk.output_shape[1:]
             assert len(dim_latent) == 1
             self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
@@ -130,6 +131,7 @@ class Heteroscedastic(Regression, ABC):
             params = self.call(x, training=True)
             py_x = tfpd.Independent(tfpd.Normal(*params.values()), reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_x.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
 
@@ -148,6 +150,7 @@ class FaithfulHeteroscedastic(Heteroscedastic, ABC):
             py_loc = tfpd.Independent(tfpd.Normal(loc=mean, scale=1.0), reinterpreted_batch_ndims=1)
             py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(mean), scale=std), reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return {'mean': mean, 'std': std}
 
