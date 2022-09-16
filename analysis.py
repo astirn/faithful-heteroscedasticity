@@ -187,7 +187,8 @@ def vae_tables():
     print_table(df_ece.reset_index(), row_cols=row_cols, file_name='vae_ece.tex', highlight_min=True)
 
 
-def vae_plots(examples_per_class=1):
+def vae_plots(heteroscedastic_architecture, examples_per_class=1):
+    assert heteroscedastic_architecture in {'separate', 'shared'}
 
     # utility function vae plots
     def concat_examples(output, indices=None):
@@ -198,6 +199,7 @@ def vae_plots(examples_per_class=1):
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
             plot_dict = os.path.join('experiments', 'vae', dataset, latent_dim, 'plot_dictionary.pkl')
+            latent_str = ' {:}-dimensional latent space'.format(latent_dim)
             if os.path.exists(plot_dict):
                 with open(plot_dict, 'rb') as f:
                     plot_dict = pickle.load(f)
@@ -219,16 +221,18 @@ def vae_plots(examples_per_class=1):
                     # plot data
                     x = concat_examples(plot_dict['Data'][observation], i_plot)
                     ax[0, col].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
-                    ax[0, col].set_title('Data')
+                    ax[0, col].set_title(observation.capitalize() + ' Data')
                     ax[0, col].set_xticks([])
                     ax[0, col].set_yticks([])
 
                     # plot each model's performance
                     for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
-                        mean = concat_examples(plot_dict['Mean'][observation][model], i_plot)
-                        std = concat_examples(plot_dict['Std. deviation'][observation][model], i_plot) - 0.5
+                        architecture = 'single' if i == 0 else heteroscedastic_architecture
+                        key = model + ' ' + architecture
+                        mean = concat_examples(plot_dict['Mean'][observation][key], i_plot)
+                        std = concat_examples(plot_dict['Std. deviation'][observation][key], i_plot) - 0.5
                         ax[i + 1, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
-                        ax[i + 1, col].set_title(model + 'w/ dim($z$) = {:}'.format(latent_dim))
+                        ax[i + 1, col].set_title(model + ' w/ ' + architecture + latent_str)
                         ax[i + 1, col].set_xticks([])
                         ax[i + 1, col].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
@@ -247,8 +251,9 @@ def vae_plots(examples_per_class=1):
                 for i, model in enumerate(['Heteroscedastic', 'Faithful Heteroscedastic']):
 
                     # find average noise variance per class
-                    std_clean = plot_dict['Std. deviation']['clean'][model]
-                    std_corrupt = plot_dict['Std. deviation']['corrupt'][model]
+                    key = model + ' ' + heteroscedastic_architecture
+                    std_clean = plot_dict['Std. deviation']['clean'][key]
+                    std_corrupt = plot_dict['Std. deviation']['corrupt'][key]
                     mean_std_noise = []
                     for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
                         i_class = tf.squeeze(tf.where(tf.equal(plot_dict['Class labels'], k)))
@@ -259,7 +264,7 @@ def vae_plots(examples_per_class=1):
 
                     # plot recovered noise variance
                     ax[i + 1].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
-                    ax[i + 1].set_title(model + 'w/ dim($z$) = {:}'.format(latent_dim))
+                    ax[i + 1].set_title(model + ' w/ ' + heteroscedastic_architecture + latent_str)
                     ax[i + 1].set_xticks([])
                     ax[i + 1].set_yticks([])
 

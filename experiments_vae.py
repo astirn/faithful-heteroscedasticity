@@ -165,8 +165,8 @@ if __name__ == '__main__':
                                                                    index.repeat(len(squared_errors)))])
 
                 # save model outputs
-                plot_dict['Mean'][observations].update({model_name: params['mean']})
-                plot_dict['Std. deviation'][observations].update({model_name: params['std']})
+                plot_dict['Mean'][observations].update({model_name + ' ' + architecture: params['mean']})
+                plot_dict['Std. deviation'][observations].update({model_name + ' ' + architecture: params['std']})
 
         # save performance measures and model outputs
         performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
