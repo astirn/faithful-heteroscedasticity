@@ -125,25 +125,25 @@ def uci_tables(normalized):
     df_mse = pd.DataFrame()
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
-        measurements_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
-        if os.path.exists(measurements_file):
-            df_measurements = pd.read_pickle(measurements_file).sort_index()
-            df_measurements = df_measurements[df_measurements['normalized'] == normalized]
+        performance_file = os.path.join('experiments', 'uci', dataset, 'performance.pkl')
+        if os.path.exists(performance_file):
+            performance = pd.read_pickle(performance_file).sort_index()
+            performance = performance[performance['normalized'] == normalized]
 
             # drop index levels with just one unique value
-            for level in df_measurements.index.names:
-                if len(df_measurements.index.unique(level)) == 1:
-                    df_measurements.set_index(df_measurements.index.droplevel(level), inplace=True)
+            for level in performance.index.names:
+                if len(performance.index.unique(level)) == 1:
+                    performance.set_index(performance.index.droplevel(level), inplace=True)
 
             # loop over models and configurations
-            for index in df_measurements.index.unique():
+            for index in performance.index.unique():
                 if isinstance(index, tuple):
-                    index = pd.MultiIndex.from_tuples(tuples=[index], names=df_measurements.index.names)
+                    index = pd.MultiIndex.from_tuples(tuples=[index], names=performance.index.names)
                 else:
-                    index = pd.Index(data=[index], name=df_measurements.index.names)
+                    index = pd.Index(data=[index], name=performance.index.names)
 
                 # analyze performance
-                df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
+                df_mse_add, df_ece_add = analyze_performance(performance, index, dataset)
                 df_mse = pd.concat([df_mse, df_mse_add])
                 df_ece = pd.concat([df_ece, df_ece_add])
 
@@ -170,14 +170,14 @@ def vae_tables():
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            measurements_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'performance.pkl')
-            if os.path.exists(measurements_file):
-                df_measurements = pd.read_pickle(measurements_file).sort_index()
+            performance_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'performance.pkl')
+            if os.path.exists(performance_file):
+                performance = pd.read_pickle(performance_file).sort_index()
 
                 # analyze each model's performance
-                for index in df_measurements.index.unique():
-                    index = pd.Index(data=[index + (latent_dim,)], name=df_measurements.index.names + ['dim($z$)'])
-                    df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset.replace('_', '-'))
+                for index in performance.index.unique():
+                    index = pd.Index(data=[index + (latent_dim,)], name=performance.index.names + ['dim($z$)'])
+                    df_mse_add, df_ece_add = analyze_performance(performance, index, dataset.replace('_', '-'))
                     df_mse = pd.concat([df_mse, df_mse_add])
                     df_ece = pd.concat([df_ece, df_ece_add])
 
