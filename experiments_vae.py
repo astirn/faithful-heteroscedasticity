@@ -84,8 +84,8 @@ if __name__ == '__main__':
     x_corrupt_train = x_clean_train + tfd.Normal(loc=0, scale=tf.gather(noise_std, train_labels)).sample()
     x_corrupt_valid = x_clean_valid + tfd.Normal(loc=0, scale=tf.gather(noise_std, valid_labels)).sample()
 
-    # initialize example image dictionary
-    model_outputs = {
+    # initialize plotting dictionary
+    plot_dict = {
         'Class labels': valid_labels,
         'Data': {'clean': x_clean_valid, 'corrupt': x_corrupt_valid},
         'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
@@ -161,10 +161,10 @@ if __name__ == '__main__':
                                                                index.repeat(len(squared_errors)))])
 
             # save model outputs
-            model_outputs['Mean'][observations].update({model_name: params['mean']})
-            model_outputs['Std. deviation'][observations].update({model_name: params['std']})
+            plot_dict['Mean'][observations].update({model_name: params['mean']})
+            plot_dict['Std. deviation'][observations].update({model_name: params['std']})
 
     # save performance measures and model outputs
     performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
-    with open(os.path.join(exp_path, 'model_outputs.pkl'), 'wb') as f:
-        pickle.dump(model_outputs, f)
+    with open(os.path.join(exp_path, 'plot_dictionary.pkl'), 'wb') as f:
+        pickle.dump(plot_dict, f)
