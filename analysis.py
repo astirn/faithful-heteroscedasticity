@@ -11,13 +11,10 @@ import seaborn as sns
 import tensorflow as tf
 
 
-def analyze_performance(df_measurements, index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+def analyze_performance(df_measurements, index, null_index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
 
     # MSE
     squared_errors = df_measurements.loc[index, 'squared errors']
-    null_index = 'Unit Variance'
-    if isinstance(index, pd.MultiIndex):
-        null_index = index.set_levels([null_index], level='Model')
     null_squared_errors = df_measurements.loc[null_index, 'squared errors']
     mse = squared_errors.mean()
     p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
@@ -135,15 +132,15 @@ def uci_tables(normalized):
                 if len(performance.index.unique(level)) == 1:
                     performance.set_index(performance.index.droplevel(level), inplace=True)
 
-            # loop over models and configurations
+            # loop each model and configuration's performance
             for index in performance.index.unique():
                 if isinstance(index, tuple):
                     index = pd.MultiIndex.from_tuples(tuples=[index], names=performance.index.names)
+                    null_index = index.set_levels(['Unit Variance'], level='Model')
                 else:
                     index = pd.Index(data=[index], name=performance.index.names)
-
-                # analyze performance
-                df_mse_add, df_ece_add = analyze_performance(performance, index, dataset)
+                    null_index = pd.Index(data=['Unit Variance'], name='Model')
+                df_mse_add, df_ece_add = analyze_performance(performance, index, null_index, dataset)
                 df_mse = pd.concat([df_mse, df_mse_add])
                 df_ece = pd.concat([df_ece, df_ece_add])
 
@@ -173,16 +170,19 @@ def vae_tables():
             performance_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'performance.pkl')
             if os.path.exists(performance_file):
                 performance = pd.read_pickle(performance_file).sort_index()
+                performance['dim($z$)'] = latent_dim
+                performance.set_index('dim($z$)', append=True, inplace=True)
 
                 # analyze each model's performance
                 for index in performance.index.unique():
-                    index = pd.Index(data=[index + (latent_dim,)], name=performance.index.names + ['dim($z$)'])
-                    df_mse_add, df_ece_add = analyze_performance(performance, index, dataset.replace('_', '-'))
+                    index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
+                    null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
+                    df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset.replace('_', '-'))
                     df_mse = pd.concat([df_mse, df_mse_add])
                     df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    row_cols = ('Dataset', 'dim($z$)', 'Observations')
+    row_cols = ('Dataset', 'Architecture', 'dim($z$)', 'Observations')
     print_table(df_mse.reset_index(), row_cols=row_cols, file_name='vae_mse.tex', null_columns=['MSE'])
     print_table(df_ece.reset_index(), row_cols=row_cols, file_name='vae_ece.tex', highlight_min=True)
 
