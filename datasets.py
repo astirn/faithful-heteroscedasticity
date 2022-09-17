@@ -203,12 +203,8 @@ def load_uci_data(data_dir, dir_after_unzip, data_file, parse_args, **kwargs):
         pickle.dump({'covariates': x, 'response': y}, f)
 
 
-def create_or_load_fold(dataset, num_folds, save_path=None, seed=None):
+def create_or_load_fold(dataset, num_folds, save_path=None):
     assert isinstance(num_folds, int) and num_folds > 0
-
-    # set random seed if one was provided
-    if seed is not None:
-        np.random.seed(seed)
 
     # if save path was provided and a data pickle exists therein, load it
     if save_path is not None and os.path.exists(os.path.join(save_path, 'data.pkl')):

@@ -25,13 +25,15 @@ parser.add_argument('--debug', action='store_true', default=False, help='run eag
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
-parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate folds')
-parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
+parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
 args = parser.parse_args()
 
 # make experimental directory base path
 exp_path = os.path.join('experiments', 'uci', args.dataset)
 os.makedirs(exp_path, exist_ok=True)
+
+# enable GPU determinism
+tf.config.experimental.enable_op_determinism()
 
 # models and configurations to run
 nn_kwargs_1 = {'d_hidden': (50,), 'f_hidden': 'elu'}
@@ -45,17 +47,24 @@ models_and_configs = [
     {'model': models.FaithfulHeteroscedastic, 'config': {**dict(), **nn_kwargs_2}},
 ]
 
-# create or load folds
-data = create_or_load_fold(args.dataset, args.num_folds, save_path=exp_path, seed=args.seed_data)
+# loop over trials
+performance = pd.DataFrame()
+for trial in range(1, args.num_trials + 1):
+    trial_path = os.path.join(exp_path, 'trial_' + str(trial))
 
-# loop over folds
-measurements = pd.DataFrame()
-for fold in np.unique(data['split']):
-    fold_path = os.path.join(exp_path, 'fold_' + str(fold))
+    # a deterministic but seemingly random transformation of the provided seed into a trial seed
+    trial_seed = int(zlib.crc32(str(trial * args.seed).encode())) % (2 ** 32 - 1)
 
-    # loop over trials
-    for trial in range(1, args.num_trials + 1):
-        trial_path = os.path.join(fold_path, 'trial_' + str(trial))
+    # create or load folds for this trial
+    tf.keras.utils.set_random_seed(trial_seed)
+    data = create_or_load_fold(args.dataset, args.num_folds, save_path=trial_path)
+
+    # loop over folds
+    for fold in np.unique(data['split']):
+        fold_path = os.path.join(trial_path, 'fold_' + str(fold))
+
+        # a deterministic but seemingly random transformation of the trial seed into a fold seed
+        fold_seed = int(zlib.crc32(str(trial * trial_seed).encode())) % (2 ** 32 - 1)
 
         # data pipeline
         i_train = data['split'] != fold
@@ -74,10 +83,8 @@ for fold in np.unique(data['split']):
         for model_and_config in models_and_configs:
             print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
-            # every model within a trial/fold gets the same seed
-            tf.keras.utils.set_random_seed(int(zlib.crc32(str(trial * args.seed_init).encode()) * fold) % (2 ** 32 - 1))
-
             # configure and build model
+            tf.keras.utils.set_random_seed(fold_seed)
             model = model_and_config['model'](
                 dim_x=x_train.shape[1],
                 dim_y=y_train.shape[1],
@@ -89,7 +96,7 @@ for fold in np.unique(data['split']):
 
             # determine where to save model
             config_dir = str(zlib.crc32(json.dumps(model_and_config['config']).encode('utf-8')))
-            save_path = os.path.join(trial_path, model.name, config_dir)
+            save_path = os.path.join(fold_path, model.name, config_dir)
 
             # if we are set to resume and the model directory already contains a saved model, load it
             if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
@@ -127,11 +134,11 @@ for fold in np.unique(data['split']):
                     params = {key: z_normalization.scale_parameters(key, values) for key, values in params.items()}
                 squared_errors = tf.reduce_sum((y - params['mean']) ** 2, axis=-1)
                 cdf_y = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1).cdf(y)
-                measurements = pd.concat([measurements, pd.DataFrame({
+                performance = pd.concat([performance, pd.DataFrame({
                     'normalized': normalized,
                     'squared errors': squared_errors,
                     'F(y)': cdf_y,
                 }, index.repeat(len(y_valid)))])
 
 # save performance measures
-measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
