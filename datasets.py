@@ -12,16 +12,12 @@ import tensorflow_datasets as tfds
 from urllib import request
 
 
-def generate_toy_data(num_samples=500, seed=None):
+def generate_toy_data(num_samples=500):
     def data_mean(x):
         return x * np.sin(x)
 
     def data_std(x):
         return 0.1 + np.abs(0.5 * x)
-
-    # set random seed if one was provided
-    if seed is not None:
-        np.random.seed(seed)
 
     # generate training and validation data
     x_isolated = np.array([0.5, 9.5])

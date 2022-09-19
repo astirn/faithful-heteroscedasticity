@@ -32,7 +32,8 @@ if __name__ == '__main__':
     os.makedirs(exp_path, exist_ok=True)
 
     # generate data
-    data = generate_toy_data(seed=args.seed_data)
+    tf.keras.utils.set_random_seed(args.seed_data)
+    data = generate_toy_data()
     with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
         pickle.dump(data, f)
 
