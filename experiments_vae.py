@@ -47,6 +47,12 @@ def f_decoder(d_in, d_out, f_out, **kwargs):
     ])
 
 
+def f_encoder_decoder(d_in, d_out, f_out, **kwargs):
+    m = f_encoder(d_in, **kwargs)
+    m.add(f_decoder(kwargs.pop('dim_z'), d_out, f_out, **kwargs))
+    return m
+
+
 if __name__ == '__main__':
 
     # script arguments
@@ -114,12 +120,18 @@ if __name__ == '__main__':
         for i, mdl in enumerate([models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]):
 
             # loop over architectures
-            for architecture in (['single'] if i == 0 else ['shared']):
+            for architecture in (['single'] if i == 0 else ['separate', 'shared']):
 
                 # initialize models
                 tf.keras.utils.set_random_seed(args.seed)
+                if architecture in {'single', 'shared'}:
+                    f_trunk = f_encoder
+                    f_param = f_decoder
+                else:
+                    f_trunk = None
+                    f_param = f_encoder_decoder
                 model = mdl(dim_x=x_train.shape[1:], dim_y=x_train.shape[1:], dim_z=args.dim_z,
-                            f_param=f_decoder, f_trunk=f_encoder)
+                            f_param=f_param, f_trunk=f_trunk)
                 model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                               run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
