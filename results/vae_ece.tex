@@ -1,14 +1,13 @@
-\begin{tabular}{lll|l|l|l}
+\begin{tabular}{ll|c|cc|cc}
 \toprule
- &  &  & Unit Variance & Heteroscedastic & Faithful Heteroscedastic \\
- &  &  & ECE & ECE & ECE \\
-Dataset & dim($z$) & Observations &  &  &  \\
+{} & {} & {Unit Variance} & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
+{} & {} & {single} & {separate} & {shared} & {separate} & {shared} \\
+{} & {} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} \\
 \midrule
-\multirow[c]{4}{*}{fashion-mnist} & \multirow[c]{2}{*}{10} & clean & 0.4 & \bfseries 0.24 & 0.32 \\
- &  & corrupt & 0.4 & 0.4 & \bfseries 0.36 \\
- & \multirow[c]{2}{*}{25} & clean & 0.4 & 0.4 & \bfseries 0.37 \\
- &  & corrupt & 0.4 & 0.4 & \bfseries 0.39 \\
-\multirow[c]{2}{*}{mnist} & \multirow[c]{2}{*}{10} & clean & 0.4 & 0.4 & \bfseries 0.39 \\
- &  & corrupt & 0.4 & \bfseries 0.31 & 0.4 \\
+\multirow[c]{2}{*}{fashion-mnist} & clean & 0.4 & 0.4 & 0.24 & 0.3 & 0.32 \\
+ & corrupt & 0.4 & 0.33 & 0.4 & 0.33 & 0.36 \\
+\multirow[c]{2}{*}{mnist} & clean & 0.4 & 0.35 & 0.4 & 0.39 & 0.39 \\
+ & corrupt & 0.4 & 0.3 & 0.31 & 0.4 & 0.4 \\
 \bottomrule
 \end{tabular}

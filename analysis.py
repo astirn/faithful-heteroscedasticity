@@ -160,18 +160,16 @@ def uci_tables(normalized):
             print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
 
 
-def vae_tables():
+def vae_tables(latent_dim=10):
 
     # loop over available measurements
     df_mse = pd.DataFrame()
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            performance_file = os.path.join('experiments', 'vae', dataset, latent_dim, 'performance.pkl')
-            if os.path.exists(performance_file):
-                performance = pd.read_pickle(performance_file).sort_index()
-                performance['dim($z$)'] = latent_dim
-                performance.set_index('dim($z$)', append=True, inplace=True)
+        performance_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'performance.pkl')
+        if os.path.exists(performance_file):
+            performance = pd.read_pickle(performance_file).sort_index()
+            performance = drop_unused_index_levels(performance)
 
                 # analyze each model's performance
                 for index in performance.index.unique():
@@ -182,12 +180,13 @@ def vae_tables():
                     df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    row_cols = ('Dataset', 'Architecture', 'dim($z$)', 'Observations')
-    print_table(df_mse.reset_index(), row_cols=row_cols, file_name='vae_mse.tex', null_columns=['MSE'])
-    print_table(df_ece.reset_index(), row_cols=row_cols, file_name='vae_ece.tex', highlight_min=True)
+    rows = ['Dataset'] + list(df_mse.index.names)
+    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    print_table(df_mse.reset_index(), file_name='vae_mse.tex', print_cols='MSE', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='vae_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
 
 
-def vae_plots(heteroscedastic_architecture, examples_per_class=1):
+def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1):
     assert heteroscedastic_architecture in {'separate', 'shared'}
 
     # utility function vae plots
@@ -197,12 +196,11 @@ def vae_plots(heteroscedastic_architecture, examples_per_class=1):
 
     # loop over available example images
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        for latent_dim in os.listdir(os.path.join('experiments', 'vae', dataset)):
-            plot_dict = os.path.join('experiments', 'vae', dataset, latent_dim, 'plot_dictionary.pkl')
-            latent_str = ' {:}-dimensional latent space'.format(latent_dim)
-            if os.path.exists(plot_dict):
-                with open(plot_dict, 'rb') as f:
-                    plot_dict = pickle.load(f)
+        plot_dict = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'plot_dictionary.pkl')
+        latent_str = ' {:}-dimensional latent space'.format(latent_dim)
+        if os.path.exists(plot_dict):
+            with open(plot_dict, 'rb') as f:
+                plot_dict = pickle.load(f)
 
                 # randomly select some examples of each class to plot
                 tf.keras.utils.set_random_seed(args.seed)
@@ -402,7 +400,8 @@ if __name__ == '__main__':
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
         vae_tables()
-        vae_plots()
+        vae_plots(heteroscedastic_architecture='separate')
+        vae_plots(heteroscedastic_architecture='shared')
 
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
