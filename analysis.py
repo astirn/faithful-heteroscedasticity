@@ -11,6 +11,16 @@ import seaborn as sns
 import tensorflow as tf
 
 
+def drop_unused_index_levels(performance):
+
+    # drop index levels with just one unique value
+    for level in performance.index.names:
+        if len(performance.index.unique(level)) == 1:
+            performance.set_index(performance.index.droplevel(level), inplace=True)
+
+    return performance
+
+
 def analyze_performance(df_measurements, index, null_index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
 
     # MSE
@@ -39,23 +49,22 @@ def analyze_performance(df_measurements, index, null_index, dataset, alpha=0.1, 
     return df_mse, df_ece
 
 
-def print_table(df, file_name, row_cols=('Dataset',), null_columns=None, highlight_min=False):
+def print_table(df, file_name, print_cols, row_idx=('Dataset',), col_idx=('Model',)):
 
     # rearrange table for LaTeX
-    df = df.set_index('Model')
-    df_latex = df.melt(id_vars=row_cols, value_vars=[c for c in df.columns if c not in row_cols], ignore_index=False)
+    df = df[[print_cols] + list(row_idx) + list(col_idx)]
+    col_idx = [c for c in col_idx]
+    df = df.set_index(col_idx)
+    df_latex = df.melt(id_vars=row_idx, value_vars=[c for c in df.columns if c not in row_idx], ignore_index=False)
     df_latex = df_latex.reset_index()
-    df_latex = df_latex.pivot(index=row_cols, columns=['Model', 'variable'], values='value')
-    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', null_columns or slice(None))],
+    df_latex = df_latex.pivot(index=row_idx, columns=col_idx + ['variable'], values='value')
+    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', slice(None))],
                           df_latex[['Heteroscedastic']],
                           df_latex[['Faithful Heteroscedastic']]], axis=1)
     style = df_latex.style.hide(axis=1, names=True)
-    if highlight_min:
-        style = style.highlight_min(props='bfseries:;', axis=1)
-    col_fmt = 'l' * len(row_cols)
-    col_fmt += ''.join(['|' + 'l' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
-    style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True)
-    # multicol_align='p{2cm}'
+    col_fmt = 'l' * len(row_idx)
+    col_fmt += ''.join(['|' + 'c' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
+    style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True, siunitx=True)
 
 
 def toy_convergence_plots():
@@ -126,11 +135,7 @@ def uci_tables(normalized):
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file).sort_index()
             performance = performance[performance['normalized'] == normalized]
-
-            # drop index levels with just one unique value
-            for level in performance.index.names:
-                if len(performance.index.unique(level)) == 1:
-                    performance.set_index(performance.index.droplevel(level), inplace=True)
+            performance = drop_unused_index_levels(performance)
 
             # loop each model and configuration's performance
             for index in performance.index.unique():
@@ -155,9 +160,9 @@ def uci_tables(normalized):
             config_str += df_mse.index.names[level] + '_'
             index_str = index[level] if df_mse.index.nlevels > 1 else index
             config_str += ''.join(c for c in str(index_str) if c.isalnum() or c.isspace()).replace(' ', '_')
-        print_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', null_columns=['MSE'])
+        print_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', print_cols='MSE')
         if not normalized:
-            print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', highlight_min=True)
+            print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', print_cols='ECE')
 
 
 def vae_tables(latent_dim=10):
