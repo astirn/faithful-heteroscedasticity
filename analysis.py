@@ -176,13 +176,13 @@ def vae_tables(latent_dim=10):
             performance = pd.read_pickle(performance_file).sort_index()
             performance = drop_unused_index_levels(performance)
 
-                # analyze each model's performance
-                for index in performance.index.unique():
-                    index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
-                    null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
-                    df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset.replace('_', '-'))
-                    df_mse = pd.concat([df_mse, df_mse_add])
-                    df_ece = pd.concat([df_ece, df_ece_add])
+            # analyze each model's performance
+            for index in performance.index.unique():
+                index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
+                null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
+                df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset.replace('_', '-'))
+                df_mse = pd.concat([df_mse, df_mse_add])
+                df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
     rows = ['Dataset'] + list(df_mse.index.names)
@@ -207,72 +207,72 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
             with open(plot_dict, 'rb') as f:
                 plot_dict = pickle.load(f)
 
-                # randomly select some examples of each class to plot
-                tf.keras.utils.set_random_seed(args.seed)
-                i_plot = tf.zeros(shape=0, dtype=tf.int64)
-                for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
-                    i_class = tf.where(tf.equal(plot_dict['Class labels'], k))
-                    i_plot = tf.concat([i_plot, tf.random.shuffle(i_class)[:examples_per_class, 0]], axis=0)
+            # randomly select some examples of each class to plot
+            tf.keras.utils.set_random_seed(args.seed)
+            i_plot = tf.zeros(shape=0, dtype=tf.int64)
+            for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
+                i_class = tf.where(tf.equal(plot_dict['Class labels'], k))
+                i_plot = tf.concat([i_plot, tf.random.shuffle(i_class)[:examples_per_class, 0]], axis=0)
 
-                # prepare performance plot
-                fig, ax = plt.subplots(nrows=4, ncols=2, figsize=(20, 10))
-                fig.suptitle(dataset.format(latent_dim))
+            # prepare performance plot
+            fig, ax = plt.subplots(nrows=4, ncols=2, figsize=(20, 10))
+            fig.suptitle(dataset.format(latent_dim))
 
-                # loop over observation types
-                for col, observation in enumerate(['clean', 'corrupt']):
+            # loop over observation types
+            for col, observation in enumerate(['clean', 'corrupt']):
 
-                    # plot data
-                    x = concat_examples(plot_dict['Data'][observation], i_plot)
-                    ax[0, col].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
-                    ax[0, col].set_title(observation.capitalize() + ' Data')
-                    ax[0, col].set_xticks([])
-                    ax[0, col].set_yticks([])
+                # plot data
+                x = concat_examples(plot_dict['Data'][observation], i_plot)
+                ax[0, col].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
+                ax[0, col].set_title(observation.capitalize() + ' Data')
+                ax[0, col].set_xticks([])
+                ax[0, col].set_yticks([])
 
-                    # plot each model's performance
-                    for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
-                        architecture = 'single' if i == 0 else heteroscedastic_architecture
-                        key = model + ' ' + architecture
-                        mean = concat_examples(plot_dict['Mean'][observation][key], i_plot)
-                        std = concat_examples(plot_dict['Std. deviation'][observation][key], i_plot) - 0.5
-                        ax[i + 1, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
-                        ax[i + 1, col].set_title(model + ' w/ ' + architecture + latent_str)
-                        ax[i + 1, col].set_xticks([])
-                        ax[i + 1, col].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
-
-                    # finalize and save figures
-                    plt.tight_layout()
-
-                # prepare variance decomposition plot
-                fig, ax = plt.subplots(nrows=3, figsize=(10, 5))
-                x = concat_examples(plot_dict['Noise variance']['corrupt']) ** 0.5
-                ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
-                ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
-                ax[0].set_xticks([])
-                ax[0].set_yticks([])
-
-                # loop over heteroscedastic models
-                for i, model in enumerate(['Heteroscedastic', 'Faithful Heteroscedastic']):
-
-                    # find average noise variance per class
-                    key = model + ' ' + heteroscedastic_architecture
-                    std_clean = plot_dict['Std. deviation']['clean'][key]
-                    std_corrupt = plot_dict['Std. deviation']['corrupt'][key]
-                    mean_std_noise = []
-                    for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
-                        i_class = tf.squeeze(tf.where(tf.equal(plot_dict['Class labels'], k)))
-                        std_noise = tf.gather(std_corrupt, i_class) - tf.gather(std_clean, i_class)
-                        std_noise = tf.clip_by_value(std_noise, 0, np.inf)
-                        mean_std_noise += [tf.reduce_mean(std_noise, axis=0)]
-                    mean_std_noise = tf.concat(mean_std_noise, axis=1)
-
-                    # plot recovered noise variance
-                    ax[i + 1].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
-                    ax[i + 1].set_title(model + ' w/ ' + heteroscedastic_architecture + latent_str)
-                    ax[i + 1].set_xticks([])
-                    ax[i + 1].set_yticks([])
+                # plot each model's performance
+                for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
+                    architecture = 'single' if i == 0 else heteroscedastic_architecture
+                    key = model + ' ' + architecture
+                    mean = concat_examples(plot_dict['Mean'][observation][key], i_plot)
+                    std = concat_examples(plot_dict['Std. deviation'][observation][key], i_plot) - 0.5
+                    ax[i + 1, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
+                    ax[i + 1, col].set_title(model + ' w/ ' + architecture + latent_str)
+                    ax[i + 1, col].set_xticks([])
+                    ax[i + 1, col].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
                 # finalize and save figures
                 plt.tight_layout()
+
+            # prepare variance decomposition plot
+            fig, ax = plt.subplots(nrows=3, figsize=(10, 5))
+            x = concat_examples(plot_dict['Noise variance']['corrupt']) ** 0.5
+            ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
+            ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
+            ax[0].set_xticks([])
+            ax[0].set_yticks([])
+
+            # loop over heteroscedastic models
+            for i, model in enumerate(['Heteroscedastic', 'Faithful Heteroscedastic']):
+
+                # find average noise variance per class
+                key = model + ' ' + heteroscedastic_architecture
+                std_clean = plot_dict['Std. deviation']['clean'][key]
+                std_corrupt = plot_dict['Std. deviation']['corrupt'][key]
+                mean_std_noise = []
+                for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
+                    i_class = tf.squeeze(tf.where(tf.equal(plot_dict['Class labels'], k)))
+                    std_noise = tf.gather(std_corrupt, i_class) - tf.gather(std_clean, i_class)
+                    std_noise = tf.clip_by_value(std_noise, 0, np.inf)
+                    mean_std_noise += [tf.reduce_mean(std_noise, axis=0)]
+                mean_std_noise = tf.concat(mean_std_noise, axis=1)
+
+                # plot recovered noise variance
+                ax[i + 1].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
+                ax[i + 1].set_title(model + ' w/ ' + heteroscedastic_architecture + latent_str)
+                ax[i + 1].set_xticks([])
+                ax[i + 1].set_yticks([])
+
+            # finalize and save figures
+            plt.tight_layout()
 
 
 def crispr_tables():
@@ -281,21 +281,24 @@ def crispr_tables():
     df_mse = pd.DataFrame()
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
-        measurements_file = os.path.join('experiments', 'crispr', dataset, 'measurements.pkl')
-        if os.path.exists(measurements_file):
-            df_measurements = pd.read_pickle(measurements_file).sort_index()
+        performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
+        if os.path.exists(performance_file):
+            performance = pd.read_pickle(performance_file).sort_index()
+            performance.index = performance.index.droplevel('Fold')
 
             # analyze each model's performance
-            for index in df_measurements.index.unique():
-                index = pd.Index(data=[index], name=df_measurements.index.names)
-                df_mse_add, df_ece_add = analyze_performance(df_measurements, index, dataset)
+            for index in performance.index.unique():
+                index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
+                null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
+                df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset)
                 df_mse = pd.concat([df_mse, df_mse_add])
                 df_ece = pd.concat([df_ece, df_ece_add])
 
     # print tables
-    row_cols = ('Dataset', 'Observation')
-    print_table(df_mse.reset_index(), row_cols=row_cols, file_name='crispr_mse.tex', null_columns=['MSE'])
-    print_table(df_ece.reset_index(), row_cols=row_cols, file_name='crispr_ece.tex', highlight_min=True)
+    rows = ['Dataset'] + list(df_mse.index.names)
+    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    print_table(df_mse.reset_index(), file_name='crispr_mse.tex', print_cols='MSE', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='crispr_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
 
 
 def crispr_motif_plots():
