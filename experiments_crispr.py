@@ -152,6 +152,8 @@ if __name__ == '__main__':
                     model.save_weights(os.path.join(save_path, 'best_checkpoint'))
                     if index.isin(optimization_history.index):
                         optimization_history.drop(index, inplace=True)
+                    if index.isin(shap.index):
+                        shap.drop(index, inplace=True)
                     optimization_history = pd.concat([optimization_history, pd.DataFrame(
                         data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
                         index=index.repeat(len(hist.epoch)))])
