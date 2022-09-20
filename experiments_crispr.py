@@ -16,7 +16,7 @@ from shap import DeepExplainer
 
 
 # sequence representation network
-def f_trunk(d_in):
+def f_conv_net(d_in):
     return tf.keras.Sequential(name='SequenceTrunk', layers=[
         tf.keras.layers.InputLayer(d_in),
         tf.keras.layers.Conv1D(filters=64, kernel_size=4, activation='relu', padding='same'),
@@ -26,8 +26,15 @@ def f_trunk(d_in):
 
 
 # parameter network
-def f_param(d_in, **kwargs):
+def f_dense_net(d_in, **kwargs):
     return models.param_net(d_in=d_in, d_out=1, d_hidden=[128, 32])
+
+
+# full LeNet
+def f_le_net(d_in, **kwargs):
+    m = f_conv_net(d_in)
+    m.add(f_dense_net(d_in=m.output_shape[1], **kwargs))
+    return m
 
 
 if __name__ == '__main__':
@@ -76,7 +83,6 @@ if __name__ == '__main__':
     # loop over validation folds
     performance = pd.DataFrame()
     for k, observations in itertools.product(range(1, args.num_folds + 1), ['means', 'replicates']):
-        print('*************** Fold {:d}/{:d}: Observing {:s} ***************'.format(k, args.num_folds, observations))
         fold_path = os.path.join(exp_path, 'fold_' + str(k))
         i_train, i_valid = tf.not_equal(folds, k), tf.equal(folds, k)
 
@@ -105,10 +111,18 @@ if __name__ == '__main__':
         for i, mdl in enumerate([models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]):
 
             # loop over architectures
-            for architecture in (['single'] if i == 0 else ['shared']):
+            for architecture in (['single'] if i == 0 else ['separate', 'shared']):
+                print('***** Fold {:d}/{:d}: Observing {:s} w/ {:s} network *****'.format(
+                    k, args.num_folds, observations, architecture))
 
                 # initialize model
                 tf.keras.utils.set_random_seed(fold_seed)
+                if architecture in {'single', 'shared'}:
+                    f_trunk = f_conv_net
+                    f_param = f_dense_net
+                else:
+                    f_trunk = None
+                    f_param = f_le_net
                 model = mdl(dim_x=x.shape[1:], dim_y=1, f_param=f_param, f_trunk=f_trunk)
                 optimizer = tf.keras.optimizers.Adam(1e-3)
                 model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
