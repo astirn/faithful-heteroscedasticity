@@ -239,8 +239,10 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
                     ax[i + 1, col].set_xticks([])
                     ax[i + 1, col].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
 
-                # finalize and save figures
-                plt.tight_layout()
+            # finalize and save figures
+            plt.tight_layout()
+            file_name = 'vae_' + heteroscedastic_architecture + '_' + dataset + '_moments.pdf'
+            fig.savefig(os.path.join('results', file_name))
 
             # prepare variance decomposition plot
             fig, ax = plt.subplots(nrows=3, figsize=(10, 5))
@@ -273,6 +275,8 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
 
             # finalize and save figures
             plt.tight_layout()
+            file_name = 'vae_' + heteroscedastic_architecture + '_' + dataset + '_noise.pdf'
+            fig.savefig(os.path.join('results', file_name))
 
 
 def crispr_tables():
@@ -339,7 +343,7 @@ def crispr_motif_plots(heteroscedastic_architecture='shared'):
             for ax in ax.flatten():
                 ax.set_ylim(y_limit)
             plt.tight_layout()
-            file_name = 'crispr_' + dataset + '_mean_' + heteroscedastic_architecture + '.pdf'
+            file_name = 'crispr_shap_' + dataset + '_mean_' + heteroscedastic_architecture + '.pdf'
             fig.savefig(os.path.join('results', file_name))
 
             # SHAP of the standard deviation figure
@@ -368,7 +372,7 @@ def crispr_motif_plots(heteroscedastic_architecture='shared'):
                 for row in range(3):
                     ax[row, col].set_ylim([-limit, limit])
             plt.tight_layout()
-            file_name = 'crispr_' + dataset + '_std_' + heteroscedastic_architecture + '.pdf'
+            file_name = 'crispr_shap_' + dataset + '_std_' + heteroscedastic_architecture + '.pdf'
             fig.savefig(os.path.join('results', file_name))
 
             # # plot learned motifs for each model
