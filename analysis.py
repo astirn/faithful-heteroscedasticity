@@ -315,15 +315,17 @@ def crispr_motif_plots(heteroscedastic_architecture='shared'):
         shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
         if os.path.exists(shap_file):
             df_shap = pd.read_pickle(shap_file)
+            df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
             df_shap.index = df_shap.index.droplevel('Fold')
             df_shap = df_shap.loc[(slice(None), ['single', heteroscedastic_architecture], slice(None)), :]
             df_shap.index = df_shap.index.droplevel('Architecture')
             df_shap.sort_index(inplace=True)
-            df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
 
             # models and observation order
             models = ['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']
             observations = ['means', 'replicates']
+            if not len(df_shap.index.unique()) == len(models) * len(observations):
+                continue
 
             # SHAP of the mean figure
             fig, ax = plt.subplots(nrows=len(models), ncols=len(observations), figsize=(15, 10))
@@ -426,6 +428,7 @@ if __name__ == '__main__':
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
+        crispr_motif_plots(heteroscedastic_architecture='separate')
         crispr_motif_plots(heteroscedastic_architecture='shared')
 
     # show plots
