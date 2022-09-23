@@ -11,9 +11,27 @@ from datasets import generate_toy_data
 from metrics import RootMeanSquaredError, ExpectedCalibrationError
 
 
-# parameter network
-def f_param(d_in, d_out, **kwargs):
-    return models.param_net(d_in=d_in, d_out=d_out, d_hidden=[50], **kwargs)
+# hidden layer
+def f_hidden_layer(d_in, **kwargs):
+    return tf.keras.Sequential(name=kwargs.get('name'), layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Dense(units=50, activation='elu'),
+    ])
+
+
+# output layer
+def f_output_layer(d_in, d_out, f_out, **kwargs):
+    return tf.keras.Sequential(name=kwargs.get('name'), layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Dense(units=d_out, activation=f_out),
+    ])
+
+
+# single layer neural network
+def f_neural_net(d_in, d_out, f_out, **kwargs):
+    m = f_hidden_layer(d_in, **kwargs)
+    m.add(f_output_layer(d_in=m.output_shape[1], d_out=d_out, f_out=f_out, **kwargs))
+    return m
 
 
 if __name__ == '__main__':
@@ -39,22 +57,29 @@ if __name__ == '__main__':
 
     # initialize mean model
     tf.keras.utils.set_random_seed(args.seed_init)
-    mean_model = models.UnitVariance(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
-    mean_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+    homo_model = models.UnitVariance(data['x_train'].shape[1], data['y_train'].shape[1], f_neural_net)
+    homo_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                        metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
 
     # initialize heteroscedastic model such that it starts with the same mean network initialization
-    full_model = models.Heteroscedastic(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
-    full_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
-                       metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
-    full_model.f_mean.set_weights(mean_model.get_weights())
+    hetero_model = models.Heteroscedastic(data['x_train'].shape[1], data['y_train'].shape[1], f_neural_net)
+    hetero_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                         metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
+    hetero_model.f_mean.set_weights(homo_model.get_weights())
+
+    # initialize 2nd order model such that it starts with the same mean/std network initializations
+    sec_ord_model = models.SecondOrderMean(data['x_train'].shape[1], data['y_train'].shape[1], f_neural_net)
+    sec_ord_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                          metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
+    sec_ord_model.f_mean.set_weights(homo_model.get_weights())
+    sec_ord_model.f_scale.set_weights(hetero_model.f_scale.get_weights())
 
     # initialize faithful heteroscedastic model such that it starts with the same mean/std network initializations
-    faith_model = models.FaithfulHeteroscedastic(data['x_train'].shape[1], data['y_train'].shape[1], f_param)
+    faith_model = models.FaithfulHeteroscedastic(data['x_train'].shape[1], data['y_train'].shape[1], f_neural_net)
     faith_model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                         metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
-    faith_model.f_mean.set_weights(mean_model.get_weights())
-    faith_model.f_scale.set_weights(full_model.f_scale.get_weights())
+    faith_model.f_mean.set_weights(homo_model.get_weights())
+    faith_model.f_scale.set_weights(hetero_model.f_scale.get_weights())
 
     # loop over the epochs
     metrics = pd.DataFrame()
@@ -62,7 +87,7 @@ if __name__ == '__main__':
     for epoch in range(0, args.epochs + 1, args.epoch_modulo):
 
         # loop over the models
-        for model in [mean_model, full_model, faith_model]:
+        for model in [homo_model, hetero_model, sec_ord_model, faith_model]:
             print('\rEpoch {:d} of {:d}: {:s}'.format(epoch, args.epochs, model.name), end='')
 
             # index for this model
