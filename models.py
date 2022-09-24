@@ -17,17 +17,28 @@ for gpu in tf.config.list_physical_devices('GPU'):
 tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU')[0], 'GPU')
 
 
-def param_net(*, d_in, d_out, d_hidden=(50, ), f_hidden='elu', rate=0.0, f_out=None, name=None, **kwargs):
+def f_hidden_layers(d_in, d_hidden, **kwargs):
     assert isinstance(d_in, int) and d_in > 0
     assert isinstance(d_hidden, (list, tuple)) and all(isinstance(d, int) for d in d_hidden)
-    assert isinstance(d_out, int) and d_out > 0
-    nn = tf.keras.Sequential(name=name)
-    nn.add(tf.keras.layers.InputLayer(d_in))
+    nn = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(d_in)], name=kwargs.get('name'))
     for d in d_hidden:
-        nn.add(tf.keras.layers.Dense(d, f_hidden))
-        nn.add(tf.keras.layers.Dropout(rate))
-    nn.add(tf.keras.layers.Dense(d_out, f_out))
+        nn.add(tf.keras.layers.Dense(d, activation='elu'))
     return nn
+
+
+def f_output_layer(d_in, d_out, f_out, **kwargs):
+    assert isinstance(d_in, int) and d_in > 0
+    assert isinstance(d_out, int) and d_out > 0
+    return tf.keras.Sequential(name=kwargs.get('name'), layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Dense(units=d_out, activation=f_out),
+    ])
+
+
+def f_neural_net(d_in, d_out, d_hidden, f_out=None, **kwargs):
+    m = f_hidden_layers(d_in, d_hidden, **kwargs)
+    m.add(f_output_layer(d_in=d_hidden[-1], d_out=d_out, f_out=f_out, **kwargs))
+    return m
 
 
 class Regression(tf.keras.Model):
@@ -238,46 +249,55 @@ if __name__ == '__main__':
 
     # script arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument('--architecture', type=str, default='separate', help='network architecture')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--model', type=str, default='FaithfulHeteroscedastic', help='which model to use')
     args = parser.parse_args()
 
     # load data
     toy_data = generate_toy_data(num_samples=500)
+    dim_x = toy_data['x_train'].shape[1]
+    dim_y = toy_data['y_train'].shape[1]
 
     # pick the appropriate model
     plot_title = args.model
     if args.model == 'UnitVariance':
-        MODEL = UnitVariance
+        args.architecture = 'single'
+        model = UnitVariance
     elif args.model == 'Heteroscedastic':
-        MODEL = Heteroscedastic
+        model = Heteroscedastic
     elif args.model == 'SecondOrderMean':
-        MODEL = SecondOrderMean
+        model = SecondOrderMean
     elif args.model == 'FaithfulHeteroscedastic':
-        MODEL = FaithfulHeteroscedastic
+        model = FaithfulHeteroscedastic
     else:
         raise NotImplementedError
+    assert args.architecture in {'single', 'separate', 'shared'}
 
     # declare model instance
-    mdl = MODEL(dim_x=toy_data['x_train'].shape[1], dim_y=toy_data['y_train'].shape[1], f_param=param_net)
+    D_HIDDEN = (50,)
+    if args.architecture in {'single', 'shared'}:
+        model = model(dim_x=dim_x, dim_y=dim_y, f_param=f_output_layer, f_trunk=f_hidden_layers, d_hidden=D_HIDDEN)
+    else:
+        model = model(dim_x=dim_x, dim_y=dim_y, f_param=f_neural_net, d_hidden=D_HIDDEN)
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
-    mdl.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
+    model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
         MeanLogLikelihood(),
         RootMeanSquaredError(),
         ExpectedCalibrationError(),
     ])
 
     # train model
-    hist = mdl.fit(x=toy_data['x_train'], y=toy_data['y_train'],
-                   batch_size=toy_data['x_train'].shape[0], epochs=int(20e3), verbose=0,
-                   callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
+    hist = model.fit(x=toy_data['x_train'], y=toy_data['y_train'],
+                     batch_size=toy_data['x_train'].shape[0], epochs=int(20e3), verbose=0,
+                     callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
-    mdl.num_mc_samples = 2000
-    p_y_x = mdl.predictive_distribution(x=toy_data['x_test'])
+    p_y_x = model.predictive_distribution(x=toy_data['x_test'])
 
     # plot results for toy data
-    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), title=args.model, **toy_data)
+    title = args.model + ' (' + args.architecture + ')'
+    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), title=title, **toy_data)
     plt.show()
