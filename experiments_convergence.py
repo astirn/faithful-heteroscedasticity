@@ -45,7 +45,7 @@ f_scale_output_layer_init = mdl.f_output_layer(d_hidden[-1], dim_y, f_out='softp
 # loop over models
 metrics = pd.DataFrame()
 measurements = pd.DataFrame()
-for i, model in enumerate([mdl.UnitVariance, mdl.Heteroscedastic, mdl.SecondOrderMean, mdl.FaithfulHeteroscedastic]):
+for i, m in enumerate([mdl.UnitVariance, mdl.Heteroscedastic, mdl.SecondOrderMean, mdl.FaithfulHeteroscedastic]):
 
     # loop over architectures
     for architecture in (['single'] if i == 0 else ['separate', 'shared']):
@@ -59,7 +59,7 @@ for i, model in enumerate([mdl.UnitVariance, mdl.Heteroscedastic, mdl.SecondOrde
             f_param = mdl.f_neural_net
 
         # initialize and compile model such that all models share a common initialization
-        model = model(dim_x, dim_y, f_param, f_trunk, d_hidden=d_hidden)
+        model = m(dim_x, dim_y, f_param, f_trunk, d_hidden=d_hidden)
         model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                       metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
         if architecture in {'single', 'shared'}:
