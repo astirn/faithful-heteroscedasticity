@@ -10,6 +10,10 @@ import scipy.stats as stats
 import seaborn as sns
 import tensorflow as tf
 
+HOMOSCEDASTIC_MODELS = ['Unit Variance']
+HETEROSCEDASTIC_MODELS = ['Heteroscedastic', 'Second Order Mean', 'Faithful Heteroscedastic']
+MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
+
 
 def drop_unused_index_levels(performance):
 
@@ -216,7 +220,7 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
                 i_plot = tf.concat([i_plot, tf.random.shuffle(i_class)[:examples_per_class, 0]], axis=0)
 
             # prepare performance plot
-            fig, ax = plt.subplots(nrows=4, ncols=2, figsize=(20, 10))
+            fig, ax = plt.subplots(nrows=1 + len(MODELS), ncols=2, figsize=(15, 2 * (1 + len(MODELS))))
             fig.suptitle(dataset.format(latent_dim))
 
             # loop over observation types
@@ -230,9 +234,11 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
                 ax[0, col].set_yticks([])
 
                 # plot each model's performance
-                for i, model in enumerate(['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']):
+                for i, model in enumerate(MODELS):
                     architecture = 'single' if i == 0 else heteroscedastic_architecture
                     key = model + ' ' + architecture
+                    if key not in plot_dict['Mean'][observation].keys():
+                        continue
                     mean = concat_examples(plot_dict['Mean'][observation][key], i_plot)
                     std = concat_examples(plot_dict['Std. deviation'][observation][key], i_plot) - 0.5
                     ax[i + 1, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
@@ -246,7 +252,7 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
             fig.savefig(os.path.join('results', file_name))
 
             # prepare variance decomposition plot
-            fig, ax = plt.subplots(nrows=3, figsize=(10, 5))
+            fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS), figsize=(10, 5))
             x = concat_examples(plot_dict['Noise variance']['corrupt']) ** 0.5
             ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
             ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
@@ -254,10 +260,12 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
             ax[0].set_yticks([])
 
             # loop over heteroscedastic models
-            for i, model in enumerate(['Heteroscedastic', 'Faithful Heteroscedastic']):
+            for i, model in enumerate(HETEROSCEDASTIC_MODELS):
 
                 # find average noise variance per class
                 key = model + ' ' + heteroscedastic_architecture
+                if (key not in plot_dict['Mean']['clean'].keys()) or (key not in plot_dict['Mean']['corrupt'].keys()):
+                    continue
                 std_clean = plot_dict['Std. deviation']['clean'][key]
                 std_corrupt = plot_dict['Std. deviation']['corrupt'][key]
                 mean_std_noise = []

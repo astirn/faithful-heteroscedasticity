@@ -14,6 +14,7 @@ from metrics import RootMeanSquaredError
 
 from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
+from utils import pretty_model_name
 
 
 def f_encoder(d_in, dim_z, **kwargs):
@@ -121,6 +122,7 @@ if __name__ == '__main__':
 
             # loop over architectures
             for architecture in (['single'] if i == 0 else ['separate', 'shared']):
+                print('***** Architecture: {:s} *****'.format(architecture))
 
                 # initialize models
                 tf.keras.utils.set_random_seed(args.seed)
@@ -136,7 +138,7 @@ if __name__ == '__main__':
                               run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
                 # index for this model and observation type
-                model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+                model_name = pretty_model_name(model)
                 index = pd.MultiIndex.from_tuples([(model_name, architecture, observations)],
                                                   names=['Model', 'Architecture', 'Observations'])
 
