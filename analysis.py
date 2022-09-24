@@ -91,12 +91,13 @@ def toy_convergence_plots():
 
     # convergence figure
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
-    models = measurements.index.unique(0)
-    fig_convergence, ax = plt.subplots(nrows=2, ncols=len(models), figsize=(5 * len(models), 10))
-    for i, model in enumerate(models):
+    indices = measurements.index.unique()
+    measurements.reset_index(inplace=True)
+    fig_convergence, ax = plt.subplots(nrows=2, ncols=len(indices), figsize=(5 * len(indices), 10))
+    for i, (model, architecture) in enumerate(indices):
 
         # title
-        ax[0, i].set_title(model)
+        ax[0, i].set_title(model + ' (' + architecture + ')')
 
         # plot data and data rich region
         sizes = 12.5 * np.ones_like(data['x_train'])
@@ -106,8 +107,8 @@ def toy_convergence_plots():
         ax[1, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[1, i].get_xaxis_transform())
 
         # predictive moments
-        df = measurements.loc[model].reset_index()
-        legend = 'full' if i == len(models) - 1 else False
+        df = measurements[(measurements.Model == model) & (measurements.Architecture == architecture)]
+        legend = 'full' if i == len(indices) - 1 else False
         sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=legend, palette=palette, ax=ax[0, i])
         sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=legend, palette=palette, ax=ax[1, i])
 

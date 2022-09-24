@@ -33,6 +33,10 @@ class ZScoreNormalization(object):
     #     return log_precision - tf.math.log(self.y_var)
 
 
+def pretty_model_name(model):
+    return ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+
+
 def string_table(df):
     for col in df.columns:
         df[col] = df[col].apply(lambda x: '{:.2f}'.format(x) if 0.01 < abs(x) < 100 else '{:.1e}'.format(x))

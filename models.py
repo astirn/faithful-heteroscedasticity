@@ -151,17 +151,18 @@ class SecondOrderMean(Heteroscedastic, ABC):
             py_x = tfpd.Independent(tfpd.Normal(*params.values()), reinterpreted_batch_ndims=1)
             nll = -tf.reduce_mean(py_x.log_prob(y))
             regularization = tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
-            tf.assert_equal(regularization, 0.0, message='this needs implementation')
         d_nll_d_params = tape.gradient(nll, params)
-        d_params_d_weights = tape.jacobian(params_concat, self.trainable_variables)
-        d_regularization_d_weights = tape.gradient(regularization, self.trainable_variables)
 
         # second order adjustment of gradient w.r.t. the mean
         d_nll_d_params['mean'] = d_nll_d_params['mean'] * params['std'] ** 2
+        d_nll_d_params = tf.concat(list(d_nll_d_params.values()), axis=1)
 
         # finalize and apply gradients
-        d_nll_d_params = tf.concat(list(d_nll_d_params.values()), axis=1)
-        gradients = [tf.einsum('bp,bp...->...', d_nll_d_params, dp_dw) for dp_dw in d_params_d_weights]
+        gradients = []
+        for weight in self.trainable_variables:
+            gradient = tape.gradient(params_concat, weight, d_nll_d_params)
+            gradient += tape.gradient(regularization, weight, unconnected_gradients=tf.UnconnectedGradients.ZERO)
+            gradients.append(gradient)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         return params
