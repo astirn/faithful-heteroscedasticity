@@ -77,10 +77,11 @@ if __name__ == '__main__':
 
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
+    dim_x = x_clean_train.shape[1:]
 
     # create heteroscedastic noise variance templates
     noise = (tf.ones_like(x_clean_train[0]) / 255).numpy()
-    x, y = x_clean_train.shape[1] // 2, x_clean_train.shape[2] // 2
+    x, y = dim_x[0] // 2, dim_x[1] // 2
     noise[x - 2: x + 3, y: 2 * y + 1] = 0.25
     k = tf.unique(train_labels)[0].shape[0]
     noise_std = [tfa.image.rotate(noise, 2 * 3.14 / k * (y + 1), interpolation='bilinear') for y in range(k)]
@@ -118,7 +119,10 @@ if __name__ == '__main__':
             raise NotImplementedError
 
         # loop over models
-        for i, mdl in enumerate([models.UnitVariance, models.Heteroscedastic, models.FaithfulHeteroscedastic]):
+        for i, mdl in enumerate([models.UnitVariance,
+                                 models.Heteroscedastic,
+                                 models.SecondOrderMean,
+                                 models.FaithfulHeteroscedastic]):
 
             # loop over architectures
             for architecture in (['single'] if i == 0 else ['separate', 'shared']):
@@ -132,8 +136,7 @@ if __name__ == '__main__':
                 else:
                     f_trunk = None
                     f_param = f_encoder_decoder
-                model = mdl(dim_x=x_train.shape[1:], dim_y=x_train.shape[1:], dim_z=args.dim_z,
-                            f_param=f_param, f_trunk=f_trunk)
+                model = mdl(dim_x=dim_x, dim_y=dim_x, dim_z=args.dim_z, f_param=f_param, f_trunk=f_trunk)
                 model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                               run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
