@@ -43,16 +43,17 @@ if __name__ == '__main__':
     parser.add_argument('--epoch_modulo', type=int, default=2000, help='number of epochs between logging results')
     parser.add_argument('--epochs', type=int, default=30000, help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--seed_data', type=int, default=112358, help='seed to generate data')
-    parser.add_argument('--seed_init', type=int, default=853211, help='seed to initialize model')
+    parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
     args = parser.parse_args()
 
     # make experimental directory base path
     exp_path = os.path.join('experiments', 'convergence')
     os.makedirs(exp_path, exist_ok=True)
 
+    # set random seed
+    tf.keras.utils.set_random_seed(args.seed)
+
     # generate data
-    tf.keras.utils.set_random_seed(args.seed_data)
     data = generate_toy_data()
     with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
         pickle.dump(data, f)
@@ -62,7 +63,6 @@ if __name__ == '__main__':
     dim_y = data['y_train'].shape[1]
 
     # initial network weights
-    tf.keras.utils.set_random_seed(args.seed_init)
     f_hidden_layer_init = f_hidden_layer(dim_x, args.dim_hidden).get_weights()
     f_mean_output_layer_init = f_output_layer(args.dim_hidden, dim_y, f_out=None).get_weights()
     f_scale_output_layer_init = f_output_layer(args.dim_hidden, dim_y, f_out='softplus').get_weights()
