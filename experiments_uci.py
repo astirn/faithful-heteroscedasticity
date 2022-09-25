@@ -38,7 +38,7 @@ tf.config.experimental.enable_op_determinism()
 models_and_configurations = get_models_and_configurations(dict(d_hidden=(50, 50), f_hidden='elu'))
 
 # loop over trials
-performance = pd.DataFrame()
+measurements = pd.DataFrame()
 for trial in range(1, args.num_trials + 1):
     trial_path = os.path.join(exp_path, 'trial_' + str(trial))
 
@@ -128,7 +128,7 @@ for trial in range(1, args.num_trials + 1):
                     y = y_valid
                     params = {key: z_normalization.scale_parameters(key, values) for key, values in params.items()}
                 py_x = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1)
-                performance = pd.concat([performance, pd.DataFrame({
+                measurements = pd.concat([measurements, pd.DataFrame({
                     'normalized': normalized,
                     'F(y|x)': py_x.cdf(y),
                     'log p(y|x)': py_x.log_prob(y),
@@ -137,4 +137,4 @@ for trial in range(1, args.num_trials + 1):
                 }, index.repeat(len(y_valid)))])
 
 # save performance measures
-performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
+measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
