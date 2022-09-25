@@ -53,8 +53,8 @@ opti_history = pd.read_pickle(opti_history_file) if os.path.exists(opti_history_
 measurements_file = os.path.join(exp_path, 'measurements.pkl')
 measurements = pd.read_pickle(measurements_file) if os.path.exists(measurements_file) else pd.DataFrame()
 
-# loop over models
-for i, mag in enumerate(models_architectures_configurations):
+# loop over models/architectures/configurations
+for mag in models_architectures_configurations:
 
     # model configuration
     if mag['architecture'] == 'separate':
