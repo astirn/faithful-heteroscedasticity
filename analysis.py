@@ -10,8 +10,8 @@ import scipy.stats as stats
 import seaborn as sns
 import tensorflow as tf
 
-HOMOSCEDASTIC_MODELS = ['Unit Variance']
-HETEROSCEDASTIC_MODELS = ['Heteroscedastic', 'Beta NLL-0.50', 'Beta NLL-1.00', 'Second Order Mean', 'Faithful Heteroscedastic']
+HOMOSCEDASTIC_MODELS = ('Unit Variance',)
+HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL-0.50', 'Beta NLL-1.00', 'Second Order Mean', 'Faithful Heteroscedastic')
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
 
 
@@ -53,7 +53,7 @@ def analyze_performance(df_measurements, index, null_index, dataset, alpha=0.1, 
     return df_mse, df_ece
 
 
-def print_table(df, file_name, print_cols, row_idx=('Dataset',), col_idx=('Model',)):
+def print_table(df, file_name, print_cols, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
 
     # rearrange table for LaTeX
     df = df[[print_cols] + list(row_idx) + list(col_idx)]
@@ -62,9 +62,7 @@ def print_table(df, file_name, print_cols, row_idx=('Dataset',), col_idx=('Model
     df_latex = df.melt(id_vars=row_idx, value_vars=[c for c in df.columns if c not in row_idx], ignore_index=False)
     df_latex = df_latex.reset_index()
     df_latex = df_latex.pivot(index=row_idx, columns=col_idx + ['variable'], values='value')
-    df_latex = pd.concat([df_latex.loc[:, ('Unit Variance', slice(None))],
-                          df_latex[['Heteroscedastic']],
-                          df_latex[['Faithful Heteroscedastic']]], axis=1)
+    df_latex = pd.concat([df_latex[[model]] for model in models if model in df_latex.columns.unique('Model')], axis=1)
     style = df_latex.style.hide(axis=1, names=True)
     col_fmt = 'l' * len(row_idx)
     col_fmt += ''.join(['|' + 'c' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
