@@ -48,8 +48,8 @@ nn_kwargs = dict(d_hidden=d_hidden, f_hidden='elu')
 models_architectures_configurations = get_models_architectures_configurations(nn_kwargs)
 
 # initialize/load optimization history
-metrics_file = os.path.join(exp_path, 'metrics.pkl')
-metrics = pd.read_pickle(metrics_file) if os.path.exists(metrics_file) else pd.DataFrame()
+opti_history_file = os.path.join(exp_path, 'optimization_history.pkl')
+opti_history = pd.read_pickle(opti_history_file) if os.path.exists(opti_history_file) else pd.DataFrame()
 measurements_file = os.path.join(exp_path, 'measurements.pkl')
 measurements = pd.read_pickle(measurements_file) if os.path.exists(measurements_file) else pd.DataFrame()
 
@@ -82,13 +82,13 @@ for i, mag in enumerate(models_architectures_configurations):
     print('********** ' + model_name + ' (' + mag['architecture'] + ') **********')
 
     # if results exist, continue unless we are forcing their replacement
-    if not bool(args.replace) and index.isin(metrics.index) and index.isin(measurements.index):
+    if not bool(args.replace) and index.isin(opti_history.index) and index.isin(measurements.index):
         print('Results exist. Continuing...')
         continue
 
     # if proceeding with new results, make sure any existing results are cleared out
-    if index.isin(metrics.index):
-        metrics.drop(index, inplace=True)
+    if index.isin(opti_history.index):
+        opti_history.drop(index, inplace=True)
     if index.isin(measurements.index):
         measurements.drop(index, inplace=True)
 
@@ -100,7 +100,7 @@ for i, mag in enumerate(models_architectures_configurations):
         if epoch > 0:
             hist = model.fit(x=data['x_train'], y=data['y_train'],
                              batch_size=data['x_train'].shape[0], epochs=args.epoch_modulo, verbose=0)
-            metrics = pd.concat([metrics, pd.DataFrame(
+            opti_history = pd.concat([opti_history, pd.DataFrame(
                 data={'Epoch': epoch - args.epoch_modulo + np.array(hist.epoch),
                       'RMSE': hist.history['RMSE'],
                       'ECE': hist.history['ECE']},
@@ -115,5 +115,5 @@ for i, mag in enumerate(models_architectures_configurations):
 
     # save performance measures
     print('')
-    metrics.to_pickle(os.path.join(exp_path, 'metrics.pkl'))
-    measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))
+    opti_history.to_pickle(opti_history_file)
+    measurements.to_pickle(measurements_file)
