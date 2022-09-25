@@ -127,12 +127,13 @@ for trial in range(1, args.num_trials + 1):
                 else:
                     y = y_valid
                     params = {key: z_normalization.scale_parameters(key, values) for key, values in params.items()}
-                squared_errors = tf.reduce_sum((y - params['mean']) ** 2, axis=-1)
-                cdf_y = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1).cdf(y)
+                py_x = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1)
                 performance = pd.concat([performance, pd.DataFrame({
                     'normalized': normalized,
-                    'squared errors': squared_errors,
-                    'F(y)': cdf_y,
+                    'F(y|x)': py_x.cdf(y),
+                    'log p(y|x)': py_x.log_prob(y),
+                    'squared errors': tf.reduce_sum((y - params['mean']) ** 2, axis=-1),
+                    'z': ((y - params['mean']) / params['std']).numpy().tolist(),
                 }, index.repeat(len(y_valid)))])
 
 # save performance measures
