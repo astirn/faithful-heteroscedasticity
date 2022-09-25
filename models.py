@@ -10,6 +10,7 @@ from datasets import generate_toy_data
 from matplotlib import pyplot as plt
 from metrics import pack_predictor_values, MeanLogLikelihood, RootMeanSquaredError, ExpectedCalibrationError
 from tensorflow_probability import distributions as tfpd
+from utils import pretty_model_name
 
 # configure GPUs
 for gpu in tf.config.list_physical_devices('GPU'):
@@ -89,7 +90,7 @@ class Regression(tf.keras.Model):
 
 class UnitVariance(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Regression.__init__(self, name='UnitVariance', **kwargs)
         self.likelihood = 'Normal'
 
@@ -118,7 +119,7 @@ class UnitVariance(Regression, ABC):
 
 class Heteroscedastic(Regression, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Regression.__init__(self, name=kwargs.pop('name', 'Heteroscedastic'), **kwargs)
         self.likelihood = 'Normal'
 
@@ -149,8 +150,9 @@ class Heteroscedastic(Regression, ABC):
 
 class SecondOrderMean(Heteroscedastic, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
-        Heteroscedastic.__init__(self, dim_x, dim_y, f_param, f_trunk, name='SecondOrderMean', **kwargs)
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        Heteroscedastic.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
+                                 name='SecondOrderMean', **kwargs)
         self.likelihood = 'Normal'
 
     def optimization_step(self, x, y):
@@ -181,8 +183,9 @@ class SecondOrderMean(Heteroscedastic, ABC):
 
 class FaithfulHeteroscedastic(Heteroscedastic, ABC):
 
-    def __init__(self, dim_x, dim_y, f_param, f_trunk=None, **kwargs):
-        Heteroscedastic.__init__(self, dim_x, dim_y, f_param, f_trunk, name='FaithfulHeteroscedastic', **kwargs)
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        Heteroscedastic.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
+                                 name='FaithfulHeteroscedastic', **kwargs)
         self.likelihood = 'Normal'
 
     def optimization_step(self, x, y):
@@ -198,7 +201,41 @@ class FaithfulHeteroscedastic(Heteroscedastic, ABC):
         return {'mean': mean, 'std': std}
 
 
-def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean, predicted_std, title):
+class BetaNLL(Heteroscedastic, ABC):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, beta=0.5, **kwargs):
+        Heteroscedastic.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
+                                 name='BetaNLL-{:.2f}'.format(beta), **kwargs)
+        self.likelihood = 'Normal'
+        self.beta = beta
+
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+            params = self.call(x, training=True)
+            py_x = tfpd.Independent(tfpd.Normal(*params.values()), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(y) * tf.stop_gradient(params['std'] ** (2 * self.beta)))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return params
+
+
+def get_models_architectures_configurations(nn_kwargs):
+    return [
+        dict(model=UnitVariance, architecture='single', config={**dict(), **nn_kwargs}),
+        dict(model=Heteroscedastic, architecture='separate', config={**dict(), **nn_kwargs}),
+        dict(model=Heteroscedastic, architecture='shared', config={**dict(), **nn_kwargs}),
+        dict(model=SecondOrderMean, architecture='separate', config={**dict(), **nn_kwargs}),
+        dict(model=SecondOrderMean, architecture='shared', config={**dict(), **nn_kwargs}),
+        dict(model=FaithfulHeteroscedastic, architecture='separate', config={**dict(), **nn_kwargs}),
+        dict(model=FaithfulHeteroscedastic, architecture='shared', config={**dict(), **nn_kwargs}),
+        dict(model=BetaNLL, architecture='separate', config={**dict(beta=0.5), **nn_kwargs}),
+        dict(model=BetaNLL, architecture='shared', config={**dict(beta=0.5), **nn_kwargs}),
+        dict(model=BetaNLL, architecture='separate', config={**dict(beta=1.0), **nn_kwargs}),
+        dict(model=BetaNLL, architecture='shared', config={**dict(beta=1.0), **nn_kwargs}),
+    ]
+
+
+def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean, predicted_std, plot_title):
     # squeeze everything
     x_train = np.squeeze(x_train)
     y_train = np.squeeze(y_train)
@@ -210,7 +247,7 @@ def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean
 
     # get a new figure
     fig, ax = plt.subplots(2, 1)
-    fig.suptitle(title)
+    fig.suptitle(plot_title)
 
     # plot the data
     sns.scatterplot(x_train, y_train, ax=ax[0])
@@ -222,7 +259,8 @@ def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean
 
     # plot the model's mean and standard deviation
     l = ax[0].plot(x_test, predicted_mean)[0]
-    ax[0].fill_between(x_test[:, ], predicted_mean - predicted_std, predicted_mean + predicted_std, color=l.get_color(), alpha=0.5)
+    ax[0].fill_between(x_test[:, ], predicted_mean - predicted_std, predicted_mean + predicted_std,
+                       color=l.get_color(), alpha=0.5)
     ax[0].plot(x_test, target_mean, '--k')
 
     # clean it up
@@ -250,17 +288,15 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--architecture', type=str, default='separate', help='network architecture')
+    parser.add_argument('--beta', type=float, default=0.5, help='beta setting for BetaNLL')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--model', type=str, default='FaithfulHeteroscedastic', help='which model to use')
     args = parser.parse_args()
 
     # load data
     toy_data = generate_toy_data(num_samples=500)
-    dim_x = toy_data['x_train'].shape[1]
-    dim_y = toy_data['y_train'].shape[1]
 
     # pick the appropriate model
-    plot_title = args.model
     if args.model == 'UnitVariance':
         args.architecture = 'single'
         model = UnitVariance
@@ -270,16 +306,18 @@ if __name__ == '__main__':
         model = SecondOrderMean
     elif args.model == 'FaithfulHeteroscedastic':
         model = FaithfulHeteroscedastic
+    elif args.model == 'BetaNLL':
+        model = BetaNLL
     else:
         raise NotImplementedError
     assert args.architecture in {'single', 'separate', 'shared'}
 
     # declare model instance
-    D_HIDDEN = (50,)
+    config = dict(d_hidden=(50,), beta=args.beta)
     if args.architecture in {'single', 'shared'}:
-        model = model(dim_x=dim_x, dim_y=dim_y, f_param=f_output_layer, f_trunk=f_hidden_layers, d_hidden=D_HIDDEN)
+        model = model(dim_x=1, dim_y=1, f_trunk=f_hidden_layers, f_param=f_output_layer, **config)
     else:
-        model = model(dim_x=dim_x, dim_y=dim_y, f_param=f_neural_net, d_hidden=D_HIDDEN)
+        model = model(dim_x=1, dim_y=1, f_param=f_neural_net, **config)
 
     # build the model
     optimizer = tf.keras.optimizers.Adam(5e-3)
@@ -298,6 +336,6 @@ if __name__ == '__main__':
     p_y_x = model.predictive_distribution(x=toy_data['x_test'])
 
     # plot results for toy data
-    title = args.model + ' (' + args.architecture + ')'
-    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), title=title, **toy_data)
+    title = pretty_model_name(model) + ' (' + args.architecture + ')'
+    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), plot_title=title, **toy_data)
     plt.show()

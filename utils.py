@@ -34,7 +34,9 @@ class ZScoreNormalization(object):
 
 
 def pretty_model_name(model):
-    return ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+    name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+    name = name.replace('N L L', 'NLL')
+    return name
 
 
 def string_table(df):
