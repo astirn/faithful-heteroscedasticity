@@ -75,15 +75,15 @@ def toy_convergence_plots(heteroscedastic_architecture):
 
     # ensure requisite files exist
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
-    metrics_file = os.path.join('experiments', 'convergence', 'metrics.pkl')
+    opti_hist_file = os.path.join('experiments', 'convergence', 'optimization_history.pkl')
     measurements_file = os.path.join('experiments', 'convergence', 'measurements.pkl')
-    if not os.path.exists(data_file) or not os.path.exists(metrics_file) or not os.path.exists(measurements_file):
+    if not os.path.exists(data_file) or not os.path.exists(opti_hist_file) or not os.path.exists(measurements_file):
         return
 
     # load data, metrics, and measurements
     with open(data_file, 'rb') as f:
         data = pickle.load(f)
-    metrics = pd.read_pickle(metrics_file).reset_index()
+    opti_hist = pd.read_pickle(opti_hist_file).reset_index()
     measurements = pd.read_pickle(measurements_file)
 
     # # learning curve figure
@@ -109,7 +109,7 @@ def toy_convergence_plots(heteroscedastic_architecture):
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
     models = measurements.index.unique('Model')
     measurements.reset_index(inplace=True)
-    fig, ax = plt.subplots(nrows=2, ncols=len(models), figsize=(5 * len(models), 15))
+    fig, ax = plt.subplots(nrows=2, ncols=len(models), figsize=(5 * len(models), 10))
     fig.suptitle('Converge for {:s} architecture'.format(heteroscedastic_architecture))
     for i, model in enumerate(models):
         architecture = 'single' if model in HOMOSCEDASTIC_MODELS else heteroscedastic_architecture
