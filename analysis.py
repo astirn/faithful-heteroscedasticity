@@ -25,32 +25,60 @@ def drop_unused_index_levels(performance):
     return performance
 
 
-def analyze_performance(df_measurements, index, null_index, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+def analyze_performance(measurements, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
 
-    # MSE
-    squared_errors = df_measurements.loc[index, 'squared errors']
-    null_squared_errors = df_measurements.loc[null_index, 'squared errors']
-    mse = squared_errors.mean()
-    p = stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1]
-    # p = stats.mannwhitneyu(squared_errors, null_squared_errors, alternative='greater')[1]
-    mse = '\\sout{{{:.2g}}}'.format(mse) if p < alpha else '{:.2g}'.format(mse)
-    p = '$H_0$' if index == null_index else '{:.2g}'.format(p)
-    df_mse = pd.DataFrame({'Dataset': dataset, 'MSE': mse, 'Welch\'s $p$': p}, index)
+    # RMSE
+    rmse = measurements['squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
+
+    # mark unfaithful
+    unfaithful_models = []
+    for index in measurements.index.unique():
+        squared_errors = measurements.loc[index, 'squared errors']
+        null_squared_errors = measurements.loc[('Unit Variance', 'single'), 'squared errors']
+        if stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1] < alpha:
+            unfaithful_models += [index]
+
+    # exclude any unfaithful model from our candidates list
+    candidates = rmse[~rmse.index.isin(unfaithful_models)].index.unique()
+
+    # mark the best models
+    i_best = rmse[rmse.index.isin(candidates)].idxmin()
+    best_models = []
+    for index in candidates:
+        squared_errors = measurements.loc[index, 'squared errors']
+        null_squared_errors = measurements.loc[i_best, 'squared errors']
+        if stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='two-sided')[1] >= alpha:
+            best_models += [index]
+
+    # finalize RMSE table
+    rmse.loc[unfaithful_models] = rmse.loc[unfaithful_models].apply(lambda x: '\\sout{{{:.2g}}}'.format(x))
+    rmse.loc[best_models] = rmse.loc[best_models].apply(lambda x: '\\textbf{{{:.2g}}}'.format(x))
+    rmse = rmse.to_frame('RMSE')
+    rmse['Dataset'] = dataset
 
     # ECE
-    cdf_y = df_measurements.loc[index, 'F(y)'].to_numpy()
+    ece = pd.DataFrame(index=measurements.index.unique())
     p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-    if ece_method == 'one-sided':
-        p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
-        ece = '{:.2g}'.format(np.sum((p - p_hat) ** 2))
-    elif ece_method == 'two-sided':
-        p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
-        ece = '{:.2g}'.format(np.sum((1 / ece_bins - np.array(p_hat)) ** 2))
-    else:
-        raise NotImplementedError
-    df_ece = pd.DataFrame({'Dataset': dataset, 'ECE': ece}, index)
+    for index in measurements.index.unique():
+        cdf_y = measurements.loc[index, 'F(y)'].to_numpy()
+        if ece_method == 'one-sided':
+            p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
+            ece.loc[index, 'ECE'] = np.sum((p - p_hat) ** 2)
+        elif ece_method == 'two-sided':
+            p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
+            ece.loc[index, 'ECE'] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
+        else:
+            raise NotImplementedError
 
-    return df_mse, df_ece
+    # mark the best models
+    i_best = ece[ece.index.isin(candidates)].idxmin()
+
+    # finalize ECE table
+    ece.loc[unfaithful_models, 'ECE'] = ece.loc[unfaithful_models, 'ECE'].apply(lambda x: '\\sout{{{:.2g}}}'.format(x))
+    ece.loc[i_best, 'ECE'] = ece.loc[i_best, 'ECE'].apply(lambda x: '\\textbf{{{:.2g}}}'.format(x))
+    ece['Dataset'] = dataset
+
+    return rmse, ece
 
 
 def print_table(df, file_name, print_cols, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
@@ -144,41 +172,25 @@ def toy_convergence_plots(heteroscedastic_architecture):
 def uci_tables(normalized):
 
     # loop over datasets with measurements
-    df_mse = pd.DataFrame()
+    df_rmse = pd.DataFrame()
     df_ece = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'performance.pkl')
         if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
+            performance = pd.read_pickle(performance_file)
             performance = performance[performance['normalized'] == normalized]
             performance = drop_unused_index_levels(performance)
 
-            # loop each model and configuration's performance
-            for index in performance.index.unique():
-                if isinstance(index, tuple):
-                    index = pd.MultiIndex.from_tuples(tuples=[index], names=performance.index.names)
-                    null_index = index.set_levels(['Unit Variance'], level='Model')
-                else:
-                    index = pd.Index(data=[index], name=performance.index.names)
-                    null_index = pd.Index(data=['Unit Variance'], name='Model')
-                df_mse_add, df_ece_add = analyze_performance(performance, index, null_index, dataset)
-                df_mse = pd.concat([df_mse, df_mse_add])
-                df_ece = pd.concat([df_ece, df_ece_add])
+            # analyze performance
+            df_rmse_dataset, df_ece_dataset = analyze_performance(performance, dataset)
+            df_rmse = pd.concat([df_rmse, df_rmse_dataset])
+            df_ece = pd.concat([df_ece, df_ece_dataset])
 
     # print tables
-    suffix = ('_normalized_' if normalized else '_')
-    df_mse = df_mse.reset_index().set_index(df_mse.index.names[1:])
-    df_ece = df_ece.reset_index().set_index(df_ece.index.names[1:])
-    assert set(df_mse.index.unique()) == set(df_ece.index.unique())
-    for i, index in enumerate(df_mse.index.unique()):
-        config_str = ''
-        for level in range(df_mse.index.nlevels):
-            config_str += df_mse.index.names[level] + '_'
-            index_str = index[level] if df_mse.index.nlevels > 1 else index
-            config_str += ''.join(c for c in str(index_str) if c.isalnum() or c.isspace()).replace(' ', '_')
-        print_table(df_mse.loc[[index]], file_name='uci_mse' + suffix + config_str + '.tex', print_cols='MSE')
-        if not normalized:
-            print_table(df_ece.loc[[index]], file_name='uci_ece' + suffix + config_str + '.tex', print_cols='ECE')
+    rows = ['Dataset'] + list(df_rmse.index.names)
+    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', print_cols='RMSE', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='uci_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
 
 
 def vae_tables(latent_dim=10):
