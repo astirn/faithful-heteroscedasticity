@@ -169,7 +169,7 @@ def toy_convergence_plots(heteroscedastic_architecture):
     fig.savefig(os.path.join('results', 'toy_convergence_' + heteroscedastic_architecture + '.pdf'))
 
 
-def uci_tables(normalized):
+def uci_tables():
 
     # loop over datasets with measurements
     df_rmse = pd.DataFrame()
@@ -178,7 +178,7 @@ def uci_tables(normalized):
         performance_file = os.path.join('experiments', 'uci', dataset, 'performance.pkl')
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file)
-            performance = performance[performance['normalized'] == normalized]
+            performance = performance[performance['normalized'] == False]
             performance = drop_unused_index_levels(performance)
 
             # analyze performance
@@ -449,8 +449,7 @@ if __name__ == '__main__':
 
     # UCI experiments
     if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):
-        uci_tables(normalized=False)
-        uci_tables(normalized=True)
+        uci_tables()
 
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
