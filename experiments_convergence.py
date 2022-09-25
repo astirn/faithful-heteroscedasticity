@@ -8,7 +8,7 @@ import tensorflow as tf
 
 from datasets import generate_toy_data
 from metrics import RootMeanSquaredError, ExpectedCalibrationError
-from models import f_hidden_layers, f_output_layer, f_neural_net, get_models_architectures_configurations
+from models import f_hidden_layers, f_output_layer, f_neural_net, get_models_and_configurations
 from utils import pretty_model_name
 
 # script arguments
@@ -45,7 +45,7 @@ f_scale_output_layer_init = f_output_layer(d_hidden[-1], dim_y, f_out='softplus'
 
 # models, architectures and configurations to run
 nn_kwargs = dict(d_hidden=d_hidden, f_hidden='elu')
-models_architectures_configurations = get_models_architectures_configurations(nn_kwargs)
+models_and_configurations = get_models_and_configurations(nn_kwargs)
 
 # initialize/load optimization history
 opti_history_file = os.path.join(exp_path, 'optimization_history.pkl')
@@ -54,13 +54,15 @@ measurements_file = os.path.join(exp_path, 'measurements.pkl')
 measurements = pd.read_pickle(measurements_file) if os.path.exists(measurements_file) else pd.DataFrame()
 
 # loop over models/architectures/configurations
-for mag in models_architectures_configurations:
+for mag in models_and_configurations:
 
     # model configuration
     if mag['architecture'] == 'separate':
-        model = mag['model'](dim_x=dim_x, dim_y=dim_y, f_trunk=None, f_param=f_neural_net, **mag['config'])
+        model = mag['model'](dim_x=dim_x, dim_y=dim_y, f_trunk=None, f_param=f_neural_net,
+                             **mag['config'], **mag['nn_kwargs'])
     elif mag['architecture'] in {'single', 'shared'}:
-        model = mag['model'](dim_x=dim_x, dim_y=dim_y, f_trunk=f_hidden_layers, f_param=f_output_layer, **mag['config'])
+        model = mag['model'](dim_x=dim_x, dim_y=dim_y, f_trunk=f_hidden_layers, f_param=f_output_layer,
+                             **mag['config'], **mag['nn_kwargs'])
     else:
         raise NotImplementedError
 

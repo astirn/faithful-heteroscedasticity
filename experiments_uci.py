@@ -1,6 +1,5 @@
 import argparse
 import json
-import models
 import os
 import pickle
 import zlib
@@ -12,11 +11,11 @@ import tensorflow as tf
 from callbacks import RegressionCallback
 from datasets import create_or_load_fold
 from metrics import RootMeanSquaredError
+from models import f_hidden_layers, f_output_layer, f_neural_net, get_models_and_configurations
 from sklearn import preprocessing
-from utils import ZScoreNormalization
+from utils import pretty_model_name, ZScoreNormalization
 
 from tensorflow_probability import distributions as tfd
-
 
 # script arguments
 parser = argparse.ArgumentParser()
@@ -36,16 +35,7 @@ os.makedirs(exp_path, exist_ok=True)
 tf.config.experimental.enable_op_determinism()
 
 # models and configurations to run
-nn_kwargs_1 = {'d_hidden': (50,), 'f_hidden': 'elu'}
-nn_kwargs_2 = {'d_hidden': (50, 50), 'f_hidden': 'elu'}
-models_and_configs = [
-    {'model': models.UnitVariance, 'config': {**dict(), **nn_kwargs_1}},
-    {'model': models.UnitVariance, 'config': {**dict(), **nn_kwargs_2}},
-    {'model': models.Heteroscedastic, 'config': {**dict(), **nn_kwargs_1}},
-    {'model': models.Heteroscedastic, 'config': {**dict(), **nn_kwargs_2}},
-    {'model': models.FaithfulHeteroscedastic, 'config': {**dict(), **nn_kwargs_1}},
-    {'model': models.FaithfulHeteroscedastic, 'config': {**dict(), **nn_kwargs_2}},
-]
+models_and_configurations = get_models_and_configurations(dict(d_hidden=(50, 50), f_hidden='elu'))
 
 # loop over trials
 performance = pd.DataFrame()
@@ -58,6 +48,8 @@ for trial in range(1, args.num_trials + 1):
     # create or load folds for this trial
     tf.keras.utils.set_random_seed(trial_seed)
     data = create_or_load_fold(args.dataset, args.num_folds, save_path=trial_path)
+    dim_x = data['covariates'].shape[1]
+    dim_y = data['response'].shape[1]
 
     # loop over folds
     for fold in np.unique(data['split']):
@@ -79,24 +71,28 @@ for trial in range(1, args.num_trials + 1):
         z_normalization = ZScoreNormalization(y_mean=tf.reduce_mean(y_train, axis=0),
                                               y_var=tf.math.reduce_variance(y_train, axis=0))
 
-        # loop over the models and configurations
-        for model_and_config in models_and_configs:
+        # loop over models/architectures/configurations
+        for mag in models_and_configurations:
             print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
-            # configure and build model
+            # model configuration (seed and GPU determinism ensures architectures are identically initialized)
             tf.keras.utils.set_random_seed(fold_seed)
-            model = model_and_config['model'](
-                dim_x=x_train.shape[1],
-                dim_y=y_train.shape[1],
-                f_param=models.param_net,
-                **model_and_config['config']
-            )
+            if mag['architecture'] == 'separate':
+                model = mag['model'](dim_x=x_train.shape[1], dim_y=y_train.shape[1],
+                                     f_trunk=None, f_param=f_neural_net,
+                                     **mag['config'], **mag['nn_kwargs'])
+            elif mag['architecture'] in {'single', 'shared'}:
+                model = mag['model'](dim_x=x_train.shape[1], dim_y=y_train.shape[1],
+                                     f_trunk=f_hidden_layers, f_param=f_output_layer,
+                                     **mag['config'], **mag['nn_kwargs'])
+            else:
+                raise NotImplementedError
             optimizer = tf.keras.optimizers.Adam(1e-3)
             model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
             # determine where to save model
-            config_dir = str(zlib.crc32(json.dumps(model_and_config['config']).encode('utf-8')))
-            save_path = os.path.join(fold_path, model.name, config_dir)
+            config_dir = str(zlib.crc32(json.dumps(mag['nn_kwargs']).encode('utf-8')))
+            save_path = os.path.join(fold_path, ''.join([model.name, mag['architecture'].capitalize()]), config_dir)
 
             # if we are set to resume and the model directory already contains a saved model, load it
             if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
@@ -119,9 +115,8 @@ for trial in range(1, args.num_trials + 1):
                     pickle.dump(history, f)
 
             # index for this model and configuration
-            model_name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-            index = {'Model': model_name}
-            index.update(model_and_config['config'])
+            index = {'Model': pretty_model_name(model), 'Architecture': mag['architecture']}
+            index.update(mag['nn_kwargs'])
             index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
 
             # save local performance measurements

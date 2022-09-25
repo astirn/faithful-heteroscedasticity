@@ -212,26 +212,27 @@ class BetaNLL(Heteroscedastic, ABC):
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.Normal(*params.values()), reinterpreted_batch_ndims=1)
-            loss = -tf.reduce_mean(py_x.log_prob(y) * tf.stop_gradient(params['std'] ** (2 * self.beta)))
+            py_x = tfpd.Normal(*params.values())
+            beta_nll = -py_x.log_prob(y) * tf.stop_gradient(params['std'] ** (2 * self.beta))
+            loss = tf.reduce_sum(beta_nll) / tf.cast(tf.shape(beta_nll)[0], tf.float32)
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
 
 
-def get_models_architectures_configurations(nn_kwargs):
+def get_models_and_configurations(nn_kwargs):
     return [
-        dict(model=UnitVariance, architecture='single', config={**dict(), **nn_kwargs}),
-        dict(model=Heteroscedastic, architecture='separate', config={**dict(), **nn_kwargs}),
-        dict(model=Heteroscedastic, architecture='shared', config={**dict(), **nn_kwargs}),
-        dict(model=SecondOrderMean, architecture='separate', config={**dict(), **nn_kwargs}),
-        dict(model=SecondOrderMean, architecture='shared', config={**dict(), **nn_kwargs}),
-        dict(model=FaithfulHeteroscedastic, architecture='separate', config={**dict(), **nn_kwargs}),
-        dict(model=FaithfulHeteroscedastic, architecture='shared', config={**dict(), **nn_kwargs}),
-        dict(model=BetaNLL, architecture='separate', config={**dict(beta=0.5), **nn_kwargs}),
-        dict(model=BetaNLL, architecture='shared', config={**dict(beta=0.5), **nn_kwargs}),
-        dict(model=BetaNLL, architecture='separate', config={**dict(beta=1.0), **nn_kwargs}),
-        dict(model=BetaNLL, architecture='shared', config={**dict(beta=1.0), **nn_kwargs}),
+        dict(model=UnitVariance, architecture='single', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=Heteroscedastic, architecture='separate', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=Heteroscedastic, architecture='shared', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=SecondOrderMean, architecture='separate', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=SecondOrderMean, architecture='shared', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedastic, architecture='separate', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedastic, architecture='shared', config=dict(), nn_kwargs=nn_kwargs),
+        dict(model=BetaNLL, architecture='separate', config=dict(beta=0.5), nn_kwargs=nn_kwargs),
+        dict(model=BetaNLL, architecture='shared', config=dict(beta=0.5), nn_kwargs=nn_kwargs),
+        dict(model=BetaNLL, architecture='separate', config=dict(beta=1.0), nn_kwargs=nn_kwargs),
+        dict(model=BetaNLL, architecture='shared', config=dict(beta=1.0), nn_kwargs=nn_kwargs),
     ]
 
 
