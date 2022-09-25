@@ -131,7 +131,8 @@ def toy_convergence_plots(heteroscedastic_architecture):
         # true mean and standard deviation
         ax[0, i].plot(data['x_test'], data['target_mean'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
         ax[1, i].plot(data['x_test'], data['target_std'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
-        ax[1, i].set_ylim([ax[1, i].get_ylim()[0], 8.5])
+        ax[0, i].set_ylim([-15, 20])
+        ax[1, i].set_ylim([0, 6])
 
     # finalize and save figure
     ax[0, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
