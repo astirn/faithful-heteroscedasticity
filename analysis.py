@@ -193,11 +193,10 @@ def toy_convergence_plots(heteroscedastic_architecture):
 
     # convergence figure
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
-    models = measurements.index.unique('Model')
     measurements.reset_index(inplace=True)
-    fig, ax = plt.subplots(nrows=2, ncols=len(models), figsize=(5 * len(models), 10))
+    fig, ax = plt.subplots(nrows=2, ncols=len(MODELS), figsize=(5 * len(MODELS), 10))
     fig.suptitle('Converge for {:s} architecture'.format(heteroscedastic_architecture))
-    for i, model in enumerate(models):
+    for i, model in enumerate(MODELS):
         architecture = 'single' if model in HOMOSCEDASTIC_MODELS else heteroscedastic_architecture
 
         # title
@@ -212,7 +211,7 @@ def toy_convergence_plots(heteroscedastic_architecture):
 
         # predictive moments
         df = measurements[(measurements.Model == model) & (measurements.Architecture == architecture)]
-        legend = 'full' if i == len(models) - 1 else False
+        legend = 'full' if i == len(MODELS) - 1 else False
         sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=legend, palette=palette, ax=ax[0, i])
         sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=legend, palette=palette, ax=ax[1, i])
 
