@@ -25,42 +25,89 @@ def drop_unused_index_levels(performance):
     return performance
 
 
-def analyze_performance(measurements, dataset, alpha=0.1, ece_bins=5, ece_method='one-sided'):
+def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha=0.1):
+
+    # find the best of the candidates
+    if max_or_min == 'max':
+        i_best = df[df.index.isin(candidates)].idxmax()
+        alternative = 'greater'
+    elif max_or_min == 'min':
+        i_best = df[df.index.isin(candidates)].idxmin()
+        alternative = 'less'
+    else:
+        raise NotImplementedError
+
+    # identify all models that are statistically indistinguishable from the best
+    best_models = candidates.to_list()
+    for index in candidates:
+        values = measurements.loc[index, test_values]
+        null_values = measurements.loc[i_best, test_values]
+        if stats.ttest_rel(null_values, values, alternative=alternative)[1] < alpha:
+            best_models.remove(index)
+
+    return best_models
+
+
+def format_table_entries(series, best_models, unfaithful_models):
+
+    # format numerical values, bold best values, and strikeout unfaithful models
+    series = series.apply(lambda x: '{:.2g}'.format(x))
+    series.loc[best_models] = series.loc[best_models].apply(lambda s: '\\textbf{{{:s}}}'.format(s))
+    series.loc[unfaithful_models] = series.loc[unfaithful_models].apply(lambda s: '\\sout{{{:s}}}'.format(s))
+
+    return series
+
+
+def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='one-sided'):
 
     # RMSE
     rmse = measurements['squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
 
-    # mark unfaithful
+    # identify unfaithful models
     unfaithful_models = []
+    null_squared_errors = measurements.loc[('Unit Variance', 'single'), 'squared errors']
     for index in measurements.index.unique():
         squared_errors = measurements.loc[index, 'squared errors']
-        null_squared_errors = measurements.loc[('Unit Variance', 'single'), 'squared errors']
-        if stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='greater')[1] < alpha:
+        if stats.ttest_rel(squared_errors, null_squared_errors, alternative='greater')[1] < alpha:
             unfaithful_models += [index]
 
     # exclude any unfaithful model from our candidates list
-    candidates = rmse[~rmse.index.isin(unfaithful_models)].index.unique()
-
-    # mark the best models
-    i_best = rmse[rmse.index.isin(candidates)].idxmin()
-    best_models = []
-    for index in candidates:
-        squared_errors = measurements.loc[index, 'squared errors']
-        null_squared_errors = measurements.loc[i_best, 'squared errors']
-        if stats.ttest_ind(squared_errors, null_squared_errors, equal_var=False, alternative='two-sided')[1] >= alpha:
-            best_models += [index]
+    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~rmse.index.isin([('Unit Variance', 'single')])]
+    candidates = candidates.index.unique()
 
     # finalize RMSE table
-    rmse.loc[unfaithful_models] = rmse.loc[unfaithful_models].apply(lambda x: '\\sout{{{:.2g}}}'.format(x))
-    rmse.loc[best_models] = rmse.loc[best_models].apply(lambda x: '\\textbf{{{:.2g}}}'.format(x))
-    rmse = rmse.to_frame('RMSE')
+    best_models = find_best_model(candidates, rmse, measurements, 'min', 'squared errors', alpha)
+    rmse = format_table_entries(rmse, best_models, unfaithful_models).to_frame('RMSE')
     rmse['Dataset'] = dataset
+
+    # QQ squared errors
+    qq_squared_errors = pd.DataFrame()
+    for index in measurements.index.unique():
+        scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
+        scores_quantiles = np.array([np.quantile(scores, q=q) for q in np.linspace(0.1, 0.9)])
+        normal_quantiles = np.array([stats.norm.ppf(q=q) for q in np.linspace(0.1, 0.9)])
+        weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in np.linspace(0.1, 0.9)])
+        sqe = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
+        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(sqe))
+        qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ squared errors': sqe}, index=index)])
+
+    # finalize QQ squared errors
+    qq = qq_squared_errors['QQ squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
+    best_models = find_best_model(candidates, qq, qq_squared_errors, 'min', 'QQ squared errors', alpha)
+    qq = format_table_entries(qq, best_models, unfaithful_models).to_frame('QQ RMSE')
+    qq['Dataset'] = dataset
+
+    # log likelihoods
+    ll = measurements['log p(y|x)'].groupby(level=['Model', 'Architecture']).mean()
+    best_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha)
+    ll = format_table_entries(ll, best_models, unfaithful_models).to_frame('LL')
+    ll['Dataset'] = dataset
 
     # ECE
     ece = pd.DataFrame(index=measurements.index.unique())
     p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
     for index in measurements.index.unique():
-        cdf_y = measurements.loc[index, 'F(y)'].to_numpy()
+        cdf_y = measurements.loc[index, 'F(y|x)'].to_numpy()
         if ece_method == 'one-sided':
             p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
             ece.loc[index, 'ECE'] = np.sum((p - p_hat) ** 2)
@@ -78,13 +125,12 @@ def analyze_performance(measurements, dataset, alpha=0.1, ece_bins=5, ece_method
     ece.loc[i_best, 'ECE'] = ece.loc[i_best, 'ECE'].apply(lambda x: '\\textbf{{{:.2g}}}'.format(x))
     ece['Dataset'] = dataset
 
-    return rmse, ece
+    return rmse, qq, ll
 
 
-def print_table(df, file_name, print_cols, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
+def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
 
     # rearrange table for LaTeX
-    df = df[[print_cols] + list(row_idx) + list(col_idx)]
     col_idx = [c for c in col_idx]
     df = df.set_index(col_idx)
     df_latex = df.melt(id_vars=row_idx, value_vars=[c for c in df.columns if c not in row_idx], ignore_index=False)
@@ -173,24 +219,27 @@ def uci_tables():
 
     # loop over datasets with measurements
     df_rmse = pd.DataFrame()
-    df_ece = pd.DataFrame()
+    df_qq = pd.DataFrame()
+    df_ll = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
-        performance_file = os.path.join('experiments', 'uci', dataset, 'performance.pkl')
+        performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file)
-            performance = performance[performance['normalized'] == False]
+            performance = performance[performance['normalized']]
             performance = drop_unused_index_levels(performance)
 
             # analyze performance
-            df_rmse_dataset, df_ece_dataset = analyze_performance(performance, dataset)
+            df_rmse_dataset, df_qq_dataset, df_ll_dataset = analyze_performance(performance, dataset)
             df_rmse = pd.concat([df_rmse, df_rmse_dataset])
-            df_ece = pd.concat([df_ece, df_ece_dataset])
+            df_qq = pd.concat([df_qq, df_qq_dataset])
+            df_ll = pd.concat([df_ll, df_ll_dataset])
 
     # print tables
     rows = ['Dataset'] + list(df_rmse.index.names)
     cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', print_cols='RMSE', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='uci_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
+    print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ll.reset_index(), file_name='uci_ll.tex', row_idx=rows, col_idx=cols)
 
 
 def vae_tables(latent_dim=10):
