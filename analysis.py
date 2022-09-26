@@ -157,6 +157,91 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True, siunitx=True)
 
 
+def uci_tables():
+
+    # loop over datasets with measurements
+    df_rmse = pd.DataFrame()
+    df_qq = pd.DataFrame()
+    df_ece = pd.DataFrame()
+    df_ll = pd.DataFrame()
+    for dataset in os.listdir(os.path.join('experiments', 'uci')):
+        performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
+        if os.path.exists(performance_file):
+            performance = pd.read_pickle(performance_file).sort_index()
+            performance = performance[performance['normalized']]
+            performance = drop_unused_index_levels(performance)
+
+            # analyze performance
+            df_rmse_add, df_qq_add, df_ece_add, df_ll_add = analyze_performance(performance, dataset)
+            df_rmse = pd.concat([df_rmse, df_rmse_add])
+            df_qq = pd.concat([df_qq, df_qq_add])
+            df_ece = pd.concat([df_ece, df_ece_add])
+            df_ll = pd.concat([df_ll, df_ll_add])
+
+    # print tables
+    rows = ['Dataset'] + list(df_rmse.index.names)
+    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='uci_ece.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ll.reset_index(), file_name='uci_ll.tex', row_idx=rows, col_idx=cols)
+
+
+def vae_tables(latent_dim=10):
+
+    # loop over available measurements
+    df_rmse = pd.DataFrame()
+    df_qq = pd.DataFrame()
+    df_ll = pd.DataFrame()
+    for dataset in os.listdir(os.path.join('experiments', 'vae')):
+        performance_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'performance.pkl')
+        if os.path.exists(performance_file):
+            performance = pd.read_pickle(performance_file).sort_index()
+            performance = drop_unused_index_levels(performance)
+
+            # analyze performance
+            for i in performance.index.unique('Observations'):
+                index = [slice(None)] * len(performance.index.levels)
+                index[performance.index.names.index('Observations')] = i
+                df_rmse_add, df_qq_add, df_ll_add = analyze_performance(performance.loc[tuple(index)], dataset)
+                df_rmse = pd.concat([df_rmse, df_rmse_dataset])
+                df_qq = pd.concat([df_qq, df_qq_dataset])
+                df_ll = pd.concat([df_ll, df_ll_dataset])
+
+    # print tables
+    rows = ['Dataset'] + list(df_rmse.index.names)
+    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    print_table(df_rmse.reset_index(), file_name='vae_rmse.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='vae_qq.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ll.reset_index(), file_name='vae_ll.tex', row_idx=rows, col_idx=cols)
+
+
+def crispr_tables():
+
+    # loop over datasets with predictions
+    df_mse = pd.DataFrame()
+    df_ece = pd.DataFrame()
+    for dataset in os.listdir(os.path.join('experiments', 'crispr')):
+        performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
+        if os.path.exists(performance_file):
+            performance = pd.read_pickle(performance_file).sort_index()
+            performance.index = performance.index.droplevel('Fold')
+
+            # analyze each model's performance
+            for index in performance.index.unique():
+                index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
+                null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
+                df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset)
+                df_mse = pd.concat([df_mse, df_mse_add])
+                df_ece = pd.concat([df_ece, df_ece_add])
+
+    # print tables
+    rows = ['Dataset'] + list(df_mse.index.names)
+    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    print_table(df_mse.reset_index(), file_name='crispr_mse.tex', print_cols='MSE', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='crispr_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
+
+
 def toy_convergence_plots(heteroscedastic_architecture):
 
     # ensure requisite files exist
@@ -226,65 +311,6 @@ def toy_convergence_plots(heteroscedastic_architecture):
     ax[1, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     plt.tight_layout()
     fig.savefig(os.path.join('results', 'toy_convergence_' + heteroscedastic_architecture + '.pdf'))
-
-
-def uci_tables():
-
-    # loop over datasets with measurements
-    df_rmse = pd.DataFrame()
-    df_qq = pd.DataFrame()
-    df_ece = pd.DataFrame()
-    df_ll = pd.DataFrame()
-    for dataset in os.listdir(os.path.join('experiments', 'uci')):
-        performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
-        if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
-            performance = performance[performance['normalized']]
-            performance = drop_unused_index_levels(performance)
-
-            # analyze performance
-            df_rmse_add, df_qq_add, df_ece_add, df_ll_add = analyze_performance(performance, dataset)
-            df_rmse = pd.concat([df_rmse, df_rmse_add])
-            df_qq = pd.concat([df_qq, df_qq_add])
-            df_ece = pd.concat([df_ece, df_ece_add])
-            df_ll = pd.concat([df_ll, df_ll_add])
-
-    # print tables
-    rows = ['Dataset'] + list(df_rmse.index.names)
-    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='uci_ece.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ll.reset_index(), file_name='uci_ll.tex', row_idx=rows, col_idx=cols)
-
-
-def vae_tables(latent_dim=10):
-
-    # loop over available measurements
-    df_rmse = pd.DataFrame()
-    df_qq = pd.DataFrame()
-    df_ll = pd.DataFrame()
-    for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        performance_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'performance.pkl')
-        if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
-            performance = drop_unused_index_levels(performance)
-
-            # analyze performance
-            for i in performance.index.unique('Observations'):
-                index = [slice(None)] * len(performance.index.levels)
-                index[performance.index.names.index('Observations')] = i
-                df_rmse_add, df_qq_add, df_ll_add = analyze_performance(performance.loc[tuple(index)], dataset)
-                df_rmse = pd.concat([df_rmse, df_rmse_dataset])
-                df_qq = pd.concat([df_qq, df_qq_dataset])
-                df_ll = pd.concat([df_ll, df_ll_dataset])
-
-    # print tables
-    rows = ['Dataset'] + list(df_rmse.index.names)
-    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='vae_rmse.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='vae_qq.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ll.reset_index(), file_name='vae_ll.tex', row_idx=rows, col_idx=cols)
 
 
 def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1):
@@ -377,32 +403,6 @@ def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1)
             plt.tight_layout()
             file_name = 'vae_' + heteroscedastic_architecture + '_' + dataset + '_noise.pdf'
             fig.savefig(os.path.join('results', file_name))
-
-
-def crispr_tables():
-
-    # loop over datasets with predictions
-    df_mse = pd.DataFrame()
-    df_ece = pd.DataFrame()
-    for dataset in os.listdir(os.path.join('experiments', 'crispr')):
-        performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
-        if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
-            performance.index = performance.index.droplevel('Fold')
-
-            # analyze each model's performance
-            for index in performance.index.unique():
-                index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
-                null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
-                df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset)
-                df_mse = pd.concat([df_mse, df_mse_add])
-                df_ece = pd.concat([df_ece, df_ece_add])
-
-    # print tables
-    rows = ['Dataset'] + list(df_mse.index.names)
-    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_mse.reset_index(), file_name='crispr_mse.tex', print_cols='MSE', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='crispr_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
 
 
 def crispr_motif_plots(heteroscedastic_architecture='shared'):
