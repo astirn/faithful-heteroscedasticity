@@ -28,7 +28,7 @@ def drop_unused_index_levels(performance):
     return performance
 
 
-def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha=0.1):
+def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha=0.1, test=stats.ttest_rel):
 
     # find the best of the candidates
     if max_or_min == 'max':
@@ -45,7 +45,7 @@ def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha
     for index in candidates:
         values = measurements.loc[index, test_values]
         null_values = measurements.loc[i_best, test_values]
-        if stats.ttest_rel(null_values, values, alternative=alternative)[1] < alpha:
+        if test(null_values, values, alternative=alternative)[1] < alpha:
             best_models.remove(index)
 
     return best_models
@@ -126,7 +126,7 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
 
     # log likelihoods
     ll = measurements['log p(y|x)'].groupby(level=['Model', 'Architecture']).mean()
-    best_ll_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha)
+    best_ll_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha, test=stats.ks_2samp)
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     ll['Dataset'] = dataset
 
