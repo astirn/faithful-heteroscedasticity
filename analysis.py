@@ -130,7 +130,7 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     ll['Dataset'] = dataset
 
-    return rmse, qq, ece, ll
+    return rmse, ece, qq, ll
 
 
 def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
@@ -161,8 +161,8 @@ def uci_tables():
 
     # loop over datasets with measurements
     df_rmse = pd.DataFrame()
-    df_qq = pd.DataFrame()
     df_ece = pd.DataFrame()
+    df_qq = pd.DataFrame()
     df_ll = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
@@ -172,18 +172,18 @@ def uci_tables():
             performance = drop_unused_index_levels(performance)
 
             # analyze performance
-            df_rmse_add, df_qq_add, df_ece_add, df_ll_add = analyze_performance(performance, dataset)
+            df_rmse_add, df_ece_add, df_qq_add, df_ll_add = analyze_performance(performance, dataset)
             df_rmse = pd.concat([df_rmse, df_rmse_add])
-            df_qq = pd.concat([df_qq, df_qq_add])
             df_ece = pd.concat([df_ece, df_ece_add])
+            df_qq = pd.concat([df_qq, df_qq_add])
             df_ll = pd.concat([df_ll, df_ll_add])
 
     # print tables
     rows = ['Dataset'] + list(df_rmse.index.names)
     cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
     print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
     print_table(df_ece.reset_index(), file_name='uci_ece.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
     print_table(df_ll.reset_index(), file_name='uci_ll.tex', row_idx=rows, col_idx=cols)
 
 
