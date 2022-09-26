@@ -76,31 +76,32 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     candidates = candidates.index.unique()
 
     # finalize RMSE table
-    best_models = find_best_model(candidates, rmse, measurements, 'min', 'squared errors', alpha)
-    rmse = format_table_entries(rmse, best_models, unfaithful_models).to_frame('RMSE')
+    best_rmse_models = find_best_model(candidates, rmse, measurements, 'min', 'squared errors', alpha)
+    rmse = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
     rmse['Dataset'] = dataset
 
     # QQ squared errors
     qq_squared_errors = pd.DataFrame()
+    quantiles = np.linspace(0.05, 0.95)
+    normal_quantiles = np.array([stats.norm.ppf(q=q) for q in quantiles])
+    weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in quantiles])
     for index in measurements.index.unique():
         scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
-        scores_quantiles = np.array([np.quantile(scores, q=q) for q in np.linspace(0.1, 0.9)])
-        normal_quantiles = np.array([stats.norm.ppf(q=q) for q in np.linspace(0.1, 0.9)])
-        weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in np.linspace(0.1, 0.9)])
+        scores_quantiles = np.array([np.quantile(scores, q=q) for q in quantiles])
         sqe = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
         index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(sqe))
         qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ squared errors': sqe}, index=index)])
 
     # finalize QQ squared errors
     qq = qq_squared_errors['QQ squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
-    best_models = find_best_model(candidates, qq, qq_squared_errors, 'min', 'QQ squared errors', alpha)
-    qq = format_table_entries(qq, best_models, unfaithful_models).to_frame('QQ RMSE')
+    best_qq_models = find_best_model(candidates, qq, qq_squared_errors, 'min', 'QQ squared errors', alpha)
+    qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ RMSE')
     qq['Dataset'] = dataset
 
     # log likelihoods
     ll = measurements['log p(y|x)'].groupby(level=['Model', 'Architecture']).mean()
-    best_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha)
-    ll = format_table_entries(ll, best_models, unfaithful_models).to_frame('LL')
+    best_ll_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha)
+    ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     ll['Dataset'] = dataset
 
     # ECE
@@ -137,6 +138,15 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     df_latex = df_latex.reset_index()
     df_latex = df_latex.pivot(index=row_idx, columns=col_idx + ['variable'], values='value')
     df_latex = pd.concat([df_latex[[model]] for model in models if model in df_latex.columns.unique('Model')], axis=1)
+
+    # compute total wins
+    total_wins = '\\textit{{Total wins or ties}}'
+    df_latex.loc[total_wins] = '0'
+    for column in df_latex.columns:
+        wins = df_latex[column].apply(lambda s: 'textbf' in s).sum()
+        df_latex.loc[total_wins, column] = '\\textit{{{:d}}}'.format(wins)
+
+    # style and save
     style = df_latex.style.hide(axis=1, names=True)
     col_fmt = 'l' * len(row_idx)
     col_fmt += ''.join(['|' + 'c' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
