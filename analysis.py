@@ -82,19 +82,19 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
 
     # QQ squared errors
     qq_squared_errors = pd.DataFrame()
-    quantiles = np.linspace(0.05, 0.95)
+    quantiles = np.linspace(0.025, 0.975, num=96)
     normal_quantiles = np.array([stats.norm.ppf(q=q) for q in quantiles])
     weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in quantiles])
     for index in measurements.index.unique():
         scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
         scores_quantiles = np.array([np.quantile(scores, q=q) for q in quantiles])
-        sqe = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
-        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(sqe))
-        qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ squared errors': sqe}, index=index)])
+        mse = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
+        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(mse))
+        qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ MSE': mse}, index=index)])
 
     # finalize QQ squared errors
-    qq = qq_squared_errors['QQ squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
-    best_qq_models = find_best_model(candidates, qq, qq_squared_errors, 'min', 'QQ squared errors', alpha)
+    qq = qq_squared_errors['QQ MSE'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
+    best_qq_models = find_best_model(candidates, qq, qq_squared_errors, 'min', 'QQ MSE', alpha)
     qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ RMSE')
     qq['Dataset'] = dataset
 
