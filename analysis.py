@@ -80,22 +80,37 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     rmse = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
     rmse['Dataset'] = dataset
 
-    # QQ squared errors
+    # ECE and QQ squared errors
+    ece = pd.Series(index=measurements.index.unique())
+    bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
     qq_squared_errors = pd.DataFrame()
     quantiles = np.linspace(0.025, 0.975, num=96)
     normal_quantiles = np.array([stats.norm.ppf(q=q) for q in quantiles])
     weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in quantiles])
     for index in measurements.index.unique():
         scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
+
+        # ECE
+        cdf = stats.norm.cdf(scores)
+        if ece_method == 'one-sided':
+            p_hat = [sum(cdf <= bin_probs[i]) / len(cdf) for i in range(len(bin_probs))]
+            ece.loc[index] = np.sum((bin_probs - p_hat) ** 2)
+        elif ece_method == 'two-sided':
+            p_hat = [sum((bin_probs[i - 1] < cdf) & (cdf <= bin_probs[i])) / len(cdf) for i in range(1, len(bin_probs))]
+            ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
+        else:
+            raise NotImplementedError
+
+        # QQ MSE
         scores_quantiles = np.array([np.quantile(scores, q=q) for q in quantiles])
         mse = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
         index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(mse))
         qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ MSE': mse}, index=index)])
 
-    # # finalize ECE table
-    # best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
-    # ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
-    # ece['Dataset'] = dataset
+    # finalize ECE table
+    best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
+    ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
+    ece['Dataset'] = dataset
 
     # finalize QQ squared errors
     qq = qq_squared_errors['QQ MSE'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
@@ -108,25 +123,6 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     best_ll_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha)
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     ll['Dataset'] = dataset
-
-    # ECE
-    ece = pd.Series(index=measurements.index.unique())
-    p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-    for index in measurements.index.unique():
-        cdf_y = measurements.loc[index, 'F(y|x)'].to_numpy()
-        if ece_method == 'one-sided':
-            p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
-            ece.loc[index] = np.sum((p - p_hat) ** 2)
-        elif ece_method == 'two-sided':
-            p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
-            ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
-        else:
-            raise NotImplementedError
-
-    # finalize ECE table
-    best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
-    ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
-    ece['Dataset'] = dataset
 
     return rmse, qq, ece, ll
 
