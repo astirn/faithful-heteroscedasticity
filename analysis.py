@@ -157,7 +157,7 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True, siunitx=True)
 
 
-def uci_tables():
+def uci_tables(heteroscedastic_architecture=None, normalized=True):
 
     # loop over datasets with measurements
     df_rmse = pd.DataFrame()
@@ -167,9 +167,11 @@ def uci_tables():
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
-            performance = performance[performance['normalized']]
-            performance = drop_unused_index_levels(performance)
+            performance = drop_unused_index_levels(pd.read_pickle(performance_file).sort_index())
+            performance = performance[performance['normalized'] == normalized]
+            if heteroscedastic_architecture is not None:
+                keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
+                performance = performance[keep]
 
             # analyze performance
             df_rmse_add, df_ece_add, df_qq_add, df_ll_add = analyze_performance(performance, dataset)
@@ -179,12 +181,13 @@ def uci_tables():
             df_ll = pd.concat([df_ll, df_ll_add])
 
     # print tables
+    suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
     rows = ['Dataset'] + list(df_rmse.index.names)
     cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='uci_ece.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ll.reset_index(), file_name='uci_ll.tex', row_idx=rows, col_idx=cols)
+    print_table(df_rmse.reset_index(), file_name='uci_rmse' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='uci_ece' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='uci_qq' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ll.reset_index(), file_name='uci_ll' + suffix + '.tex', row_idx=rows, col_idx=cols)
 
 
 def vae_tables(latent_dim=10):
@@ -521,6 +524,8 @@ if __name__ == '__main__':
     # UCI experiments
     if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):
         uci_tables()
+        uci_tables(heteroscedastic_architecture='separate')
+        uci_tables(heteroscedastic_architecture='shared')
 
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):

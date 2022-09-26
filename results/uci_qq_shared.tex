@@ -1,0 +1,21 @@
+\begin{tabular}{l|c|c|c|c|c|c}
+\toprule
+{} & {Unit Variance} & {Heteroscedastic} & {Beta NLL-0.50} & {Beta NLL-1.00} & {Second Order Mean} & {Faithful Heteroscedastic} \\
+{} & {single} & {shared} & {shared} & {shared} & {shared} & {shared} \\
+{} & {QQ RMSE} & {QQ RMSE} & {QQ RMSE} & {QQ RMSE} & {QQ RMSE} & {QQ RMSE} \\
+{Dataset} & {} & {} & {} & {} & {} & {} \\
+\midrule
+boston & 0.053 & \sout{0.028} & 0.13 & 0.047 & \sout{0.033} & \textbf{0.034} \\
+carbon & 0.071 & \sout{0.036} & \textbf{0.027} & \sout{0.12} & \sout{0.0042} & \textbf{0.028} \\
+concrete & 0.057 & \sout{0.025} & \sout{0.054} & \textbf{0.066} & \sout{0.023} & \textbf{0.064} \\
+energy & 0.067 & \sout{0.015} & \sout{0.0097} & \sout{0.0085} & \sout{0.008} & \textbf{0.0049} \\
+naval & 0.07 & \sout{0.027} & \sout{0.015} & \sout{0.0091} & \sout{0.0042} & \textbf{0.02} \\
+power plant & 0.057 & \sout{0.0032} & \sout{0.003} & \sout{0.005} & \sout{0.0037} & \textbf{0.0027} \\
+protein & 0.071 & \sout{0.03} & \sout{0.036} & \sout{0.025} & \sout{0.0033} & \textbf{0.033} \\
+superconductivity & 0.055 & \sout{0.016} & 0.017 & \sout{0.016} & \sout{0.0099} & \textbf{0.01} \\
+wine-red & 0.02 & 0.0074 & 0.011 & \textbf{0.0065} & 0.0073 & 0.0089 \\
+wine-white & 0.019 & 0.0059 & 0.0091 & 0.008 & 0.0067 & \textbf{0.0045} \\
+yacht & 0.07 & \sout{0.026} & \textbf{0.026} & 0.042 & \sout{0.011} & 0.032 \\
+\textit{{Total wins or ties}} & \textit{0} & \textit{0} & \textit{2} & \textit{2} & \textit{0} & \textit{9} \\
+\bottomrule
+\end{tabular}
