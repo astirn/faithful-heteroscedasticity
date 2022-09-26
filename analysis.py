@@ -58,7 +58,7 @@ def format_table_entries(series, best_models, unfaithful_models):
     return series
 
 
-def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='one-sided'):
+def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='two-sided'):
 
     # RMSE
     rmse = measurements['squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
@@ -91,6 +91,11 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
         mse = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
         index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(mse))
         qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ MSE': mse}, index=index)])
+
+    # # finalize ECE table
+    # best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
+    # ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
+    # ece['Dataset'] = dataset
 
     # finalize QQ squared errors
     qq = qq_squared_errors['QQ MSE'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
@@ -255,27 +260,30 @@ def uci_tables():
 def vae_tables(latent_dim=10):
 
     # loop over available measurements
-    df_mse = pd.DataFrame()
-    df_ece = pd.DataFrame()
+    df_rmse = pd.DataFrame()
+    df_qq = pd.DataFrame()
+    df_ll = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         performance_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'performance.pkl')
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file).sort_index()
             performance = drop_unused_index_levels(performance)
 
-            # analyze each model's performance
-            for index in performance.index.unique():
-                index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
-                null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
-                df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset.replace('_', '-'))
-                df_mse = pd.concat([df_mse, df_mse_add])
-                df_ece = pd.concat([df_ece, df_ece_add])
+            # analyze performance
+            for i in performance.index.unique('Observations'):
+                index = [slice(None)] * len(performance.index.levels)
+                index[performance.index.names.index('Observations')] = i
+                df_rmse_add, df_qq_add, df_ll_add = analyze_performance(performance.loc[tuple(index)], dataset)
+                df_rmse = pd.concat([df_rmse, df_rmse_dataset])
+                df_qq = pd.concat([df_qq, df_qq_dataset])
+                df_ll = pd.concat([df_ll, df_ll_dataset])
 
     # print tables
-    rows = ['Dataset'] + list(df_mse.index.names)
+    rows = ['Dataset'] + list(df_rmse.index.names)
     cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_mse.reset_index(), file_name='vae_mse.tex', print_cols='MSE', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='vae_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
+    print_table(df_rmse.reset_index(), file_name='vae_rmse.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='vae_qq.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ll.reset_index(), file_name='vae_ll.tex', row_idx=rows, col_idx=cols)
 
 
 def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1):
@@ -406,11 +414,14 @@ def crispr_motif_plots(heteroscedastic_architecture='shared'):
         shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
         if os.path.exists(shap_file):
             df_shap = pd.read_pickle(shap_file)
-            df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
             df_shap.index = df_shap.index.droplevel('Fold')
-            df_shap = df_shap.loc[(slice(None), ['single', heteroscedastic_architecture], slice(None)), :]
+            df_shap = pd.concat([
+                df_shap.loc[(slice(None), ['single'], slice(None)), :],
+                df_shap.loc[(slice(None), [heteroscedastic_architecture], slice(None)), :],
+            ])
             df_shap.index = df_shap.index.droplevel('Architecture')
             df_shap.sort_index(inplace=True)
+            df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
 
             # models and observation order
             models = ['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']
