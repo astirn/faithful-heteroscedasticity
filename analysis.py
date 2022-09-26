@@ -11,8 +11,11 @@ import seaborn as sns
 import tensorflow as tf
 
 HOMOSCEDASTIC_MODELS = ('Unit Variance',)
-HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL-0.50', 'Beta NLL-1.00', 'Second Order Mean', 'Faithful Heteroscedastic')
+BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL-0.50', 'Beta NLL-1.00')
+OUR_HETEROSCEDASTIC_MODELS = ('Second Order Mean', 'Faithful Heteroscedastic')
+HETEROSCEDASTIC_MODELS = BASELINE_HETEROSCEDASTIC_MODELS + OUR_HETEROSCEDASTIC_MODELS
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
+ARCHITECTURES = ('single', 'separate', 'shared')
 
 
 def drop_unused_index_levels(performance):
@@ -80,14 +83,17 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     rmse = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
     rmse['Dataset'] = dataset
 
-    # ECE and QQ squared errors
-    ece = pd.Series(index=measurements.index.unique())
+    # ECE and QQ weighted squared quantile errors
+    ece = pd.Series(index=measurements.index.unique(), dtype=float)
     bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-    qq_squared_errors = pd.DataFrame()
+    qq_wse = pd.DataFrame()
     quantiles = np.linspace(0.025, 0.975, num=96)
     normal_quantiles = np.array([stats.norm.ppf(q=q) for q in quantiles])
     weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in quantiles])
+    weights /= np.sum(weights)
     for index in measurements.index.unique():
+
+        # grab scores (and flatten for multidimensional  targets)
         scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
 
         # ECE
@@ -101,20 +107,20 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
         else:
             raise NotImplementedError
 
-        # QQ MSE
+        # QQ weighted squared quantile errors
         scores_quantiles = np.array([np.quantile(scores, q=q) for q in quantiles])
-        mse = weights * (scores_quantiles - normal_quantiles) ** 2 / weights.sum()
-        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(mse))
-        qq_squared_errors = pd.concat([qq_squared_errors, pd.DataFrame({'QQ MSE': mse}, index=index)])
+        wse = weights * (scores_quantiles - normal_quantiles) ** 2
+        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(wse))
+        qq_wse = pd.concat([qq_wse, pd.DataFrame({'QQ WSE': wse}, index=index)])
 
     # finalize ECE table
     best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
     ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
     ece['Dataset'] = dataset
 
-    # finalize QQ squared errors
-    qq = qq_squared_errors['QQ MSE'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
-    best_qq_models = find_best_model(candidates, qq, qq_squared_errors, 'min', 'QQ MSE', alpha)
+    # finalize QQ RMSE table
+    qq = qq_wse['QQ WSE'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
+    best_qq_models = find_best_model(candidates, qq, qq_wse, 'min', 'QQ WSE', alpha)
     qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ RMSE')
     qq['Dataset'] = dataset
 
@@ -233,7 +239,7 @@ def uci_tables():
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file)
+            performance = pd.read_pickle(performance_file).sort_index()
             performance = performance[performance['normalized']]
             performance = drop_unused_index_levels(performance)
 

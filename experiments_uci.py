@@ -130,7 +130,6 @@ for trial in range(1, args.num_trials + 1):
                 py_x = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1)
                 measurements = pd.concat([measurements, pd.DataFrame({
                     'normalized': normalized,
-                    'F(y|x)': py_x.cdf(y),
                     'log p(y|x)': py_x.log_prob(y),
                     'squared errors': tf.reduce_sum((y - params['mean']) ** 2, axis=-1),
                     'z': ((y - params['mean']) / params['std']).numpy().tolist(),
