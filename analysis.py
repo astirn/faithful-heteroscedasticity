@@ -105,28 +105,25 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     ll['Dataset'] = dataset
 
     # ECE
-    ece = pd.DataFrame(index=measurements.index.unique())
+    ece = pd.Series(index=measurements.index.unique())
     p = np.stack([x / ece_bins for x in range(ece_bins + 1)])
     for index in measurements.index.unique():
         cdf_y = measurements.loc[index, 'F(y|x)'].to_numpy()
         if ece_method == 'one-sided':
             p_hat = [sum(cdf_y <= p[i]) / len(cdf_y) for i in range(len(p))]
-            ece.loc[index, 'ECE'] = np.sum((p - p_hat) ** 2)
+            ece.loc[index] = np.sum((p - p_hat) ** 2)
         elif ece_method == 'two-sided':
             p_hat = [sum((p[i - 1] < cdf_y) & (cdf_y <= p[i])) / len(cdf_y) for i in range(1, len(p))]
-            ece.loc[index, 'ECE'] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
+            ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
         else:
             raise NotImplementedError
 
-    # mark the best models
-    i_best = ece[ece.index.isin(candidates)].idxmin()
-
     # finalize ECE table
-    ece.loc[unfaithful_models, 'ECE'] = ece.loc[unfaithful_models, 'ECE'].apply(lambda x: '\\sout{{{:.2g}}}'.format(x))
-    ece.loc[i_best, 'ECE'] = ece.loc[i_best, 'ECE'].apply(lambda x: '\\textbf{{{:.2g}}}'.format(x))
+    best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
+    ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
     ece['Dataset'] = dataset
 
-    return rmse, qq, ll
+    return rmse, qq, ece, ll
 
 
 def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
@@ -230,6 +227,7 @@ def uci_tables():
     # loop over datasets with measurements
     df_rmse = pd.DataFrame()
     df_qq = pd.DataFrame()
+    df_ece = pd.DataFrame()
     df_ll = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
@@ -239,16 +237,18 @@ def uci_tables():
             performance = drop_unused_index_levels(performance)
 
             # analyze performance
-            df_rmse_dataset, df_qq_dataset, df_ll_dataset = analyze_performance(performance, dataset)
-            df_rmse = pd.concat([df_rmse, df_rmse_dataset])
-            df_qq = pd.concat([df_qq, df_qq_dataset])
-            df_ll = pd.concat([df_ll, df_ll_dataset])
+            df_rmse_add, df_qq_add, df_ece_add, df_ll_add = analyze_performance(performance, dataset)
+            df_rmse = pd.concat([df_rmse, df_rmse_add])
+            df_qq = pd.concat([df_qq, df_qq_add])
+            df_ece = pd.concat([df_ece, df_ece_add])
+            df_ll = pd.concat([df_ll, df_ll_add])
 
     # print tables
     rows = ['Dataset'] + list(df_rmse.index.names)
     cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
     print_table(df_rmse.reset_index(), file_name='uci_rmse.tex', row_idx=rows, col_idx=cols)
     print_table(df_qq.reset_index(), file_name='uci_qq.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='uci_ece.tex', row_idx=rows, col_idx=cols)
     print_table(df_ll.reset_index(), file_name='uci_ll.tex', row_idx=rows, col_idx=cols)
 
 
