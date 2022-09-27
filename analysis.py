@@ -87,8 +87,8 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
     qq_wse = pd.DataFrame()
     quantiles = np.linspace(0.025, 0.975, num=96)
-    normal_quantiles = np.array([stats.norm.ppf(q=q) for q in quantiles])
-    weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in quantiles])
+    normal_quantiles = stats.norm.ppf(q=quantiles)
+    weights = stats.norm.pdf(stats.norm.ppf(q=quantiles))
     weights /= np.sum(weights)
     for index in measurements.index.unique():
         if not isinstance(index, tuple):
@@ -103,13 +103,13 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
             p_hat = [sum(cdf <= bin_probs[i]) / len(cdf) for i in range(len(bin_probs))]
             ece.loc[index] = np.sum((bin_probs - p_hat) ** 2)
         elif ece_method == 'two-sided':
-            p_hat = [sum((bin_probs[i - 1] < cdf) & (cdf <= bin_probs[i])) / len(cdf) for i in range(1, len(bin_probs))]
+            p_hat = np.histogram(cdf, bin_probs)[0] / len(cdf)
             ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
         else:
             raise NotImplementedError
 
         # QQ weighted squared quantile errors
-        scores_quantiles = np.array([np.quantile(scores, q=q) for q in quantiles])
+        scores_quantiles = np.quantile(scores, q=quantiles)
         wse = weights * (scores_quantiles - normal_quantiles) ** 2
         index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(wse))
         qq_wse = pd.concat([qq_wse, pd.DataFrame({'QQ WSE': wse}, index=index)])
