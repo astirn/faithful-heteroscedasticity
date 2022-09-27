@@ -223,30 +223,38 @@ def vae_tables(latent_dim=10):
     print_table(df_ll.reset_index(), file_name='vae_ll.tex', row_idx=rows, col_idx=cols)
 
 
-def crispr_tables():
+def crispr_tables(heteroscedastic_architecture=None):
 
     # loop over datasets with predictions
-    df_mse = pd.DataFrame()
+    df_rmse = pd.DataFrame()
     df_ece = pd.DataFrame()
-    for dataset in os.listdir(os.path.join('experiments', 'crispr')):
+    df_qq = pd.DataFrame()
+    df_ll = pd.DataFrame()
+    for dataset in ['flow-cytometry']: #os.listdir(os.path.join('experiments', 'crispr')):
         performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file).sort_index()
             performance.index = performance.index.droplevel('Fold')
 
-            # analyze each model's performance
-            for index in performance.index.unique():
-                index = pd.MultiIndex.from_tuples([index], names=performance.index.names)
-                null = index.set_levels([['Unit Variance'], ['single']], level=['Model', 'Architecture'])
-                df_mse_add, df_ece_add = analyze_performance(performance, index, null, dataset)
-                df_mse = pd.concat([df_mse, df_mse_add])
+            # analyze performance for each observation type
+            for observations in performance.index.unique('Observations'):
+                obs_performance = performance[performance.index.get_level_values('Observations') == observations]
+                df_rmse_add, df_ece_add, df_qq_add, df_ll_add = analyze_performance(obs_performance, dataset)
+                df_rmse = pd.concat([df_rmse, df_rmse_add])
                 df_ece = pd.concat([df_ece, df_ece_add])
+                df_qq = pd.concat([df_qq, df_qq_add])
+                df_ll = pd.concat([df_ll, df_ll_add])
 
     # print tables
-    rows = ['Dataset'] + list(df_mse.index.names)
-    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_mse.reset_index(), file_name='crispr_mse.tex', print_cols='MSE', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='crispr_ece.tex', print_cols='ECE', row_idx=rows, col_idx=cols)
+    suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
+    rows = ['Dataset'] + list(df_rmse.index.names)
+    cols = [rows.pop(rows.index('Model'))]
+    if 'Architecture' in rows:
+        cols += [rows.pop(rows.index('Architecture'))]
+    print_table(df_rmse.reset_index(), file_name='crispr_rmse' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ece.reset_index(), file_name='crispr_ece' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    print_table(df_qq.reset_index(), file_name='crispr_qq' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    print_table(df_ll.reset_index(), file_name='crispr_ll' + suffix + '.tex', row_idx=rows, col_idx=cols)
 
 
 def toy_convergence_plots(heteroscedastic_architecture):
