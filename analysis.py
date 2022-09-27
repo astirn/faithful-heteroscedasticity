@@ -151,7 +151,10 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     total_wins = []
     for column in df_latex.columns:
         total_wins.append('\\textit{{{:d}}}'.format(df_latex[column].apply(lambda s: 'textbf' in s).sum()))
-    df_latex.loc[('\\textit{{Total wins or ties}}', ) + ('', ) * (len(df_latex.index.names) - 1), :] = total_wins
+    index = ('\\textit{{Total wins or ties}}',) + ('',) * (len(df_latex.index.names) - 1)
+    if len(df_latex.index.names) == 1:
+        index = index[0]
+    df_latex.loc[index, :] = total_wins
 
     # style and save
     style = df_latex.style.hide(axis=1, names=True)
