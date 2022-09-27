@@ -228,7 +228,7 @@ def crispr_tables(heteroscedastic_architecture=None):
 
     # loop over datasets with predictions
     df = pd.DataFrame()
-    for dataset in ['flow-cytometry']: #os.listdir(os.path.join('experiments', 'crispr')):
+    for dataset in os.listdir(os.path.join('experiments', 'crispr')):
         performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file).sort_index()
@@ -534,6 +534,8 @@ if __name__ == '__main__':
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
+        crispr_tables(heteroscedastic_architecture='separate')
+        crispr_tables(heteroscedastic_architecture='shared')
         crispr_motif_plots(heteroscedastic_architecture='separate')
         crispr_motif_plots(heteroscedastic_architecture='shared')
 
