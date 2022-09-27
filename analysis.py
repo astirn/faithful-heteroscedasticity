@@ -148,11 +148,10 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     df_latex = pd.concat([df_latex[[model]] for model in models if model in df_latex.columns.unique('Model')], axis=1)
 
     # compute total wins
-    total_wins = '\\textit{{Total wins or ties}}'
-    df_latex.loc[total_wins] = '0'
+    total_wins = []
     for column in df_latex.columns:
-        wins = df_latex[column].apply(lambda s: 'textbf' in s).sum()
-        df_latex.loc[total_wins, column] = '\\textit{{{:d}}}'.format(wins)
+        total_wins.append('\\textit{{{:d}}}'.format(df_latex[column].apply(lambda s: 'textbf' in s).sum()))
+    df_latex.loc[('\\textit{{Total wins or ties}}', ) + ('', ) * (len(df_latex.index.names) - 1), :] = total_wins
 
     # style and save
     style = df_latex.style.hide(axis=1, names=True)
@@ -233,6 +232,9 @@ def crispr_tables(heteroscedastic_architecture=None):
         if os.path.exists(performance_file):
             performance = pd.read_pickle(performance_file).sort_index()
             performance.index = performance.index.droplevel('Fold')
+            if heteroscedastic_architecture is not None:
+                keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
+                performance = performance[keep].droplevel('Architecture')
 
             # analyze performance for each observation type
             for observations in performance.index.unique('Observations'):

@@ -1,11 +1,13 @@
-\begin{tabular}{ll|c|cc|cc|cc|cc|cc}
+\begin{tabular}{ll|c|c|c|c|c|c}
 \toprule
-{} & {Unit Variance} & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Beta NLL-0.50} & \multicolumn{2}{r}{Beta NLL-1.00} & \multicolumn{2}{r}{Second Order Mean} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
-{} & {single} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} \\
-{} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} \\
+{} & {} & {Unit Variance} & {Heteroscedastic} & {Beta NLL-0.50} & {Beta NLL-1.00} & {Second Order Mean} & {Faithful Heteroscedastic} \\
+{} & {} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} \\
 \midrule
-('flow-cytometry', 'means') & 0.33 & \sout{0.063} & \sout{0.1} & 0.055 & 0.041 & \textbf{0.037} & 0.048 & 0.044 & \sout{0.018} & 0.047 & 0.042 \\
-('flow-cytometry', 'replicates') & 0.29 & \sout{0.045} & 0.035 & 0.031 & 0.027 & 0.024 & 0.029 & 0.025 & \sout{0.027} & \textbf{0.02} & 0.021 \\
-\textit{{Total wins or ties}} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{1} & \textit{0} & \textit{0} & \textit{0} & \textit{1} & \textit{0} \\
+\multirow[c]{2}{*}{flow-cytometry} & means & 0.33 & \sout{0.063} & 0.055 & \textbf{0.037} & 0.044 & 0.047 \\
+ & replicates & 0.29 & \sout{0.045} & 0.031 & 0.024 & 0.025 & \textbf{0.02} \\
+\multirow[c]{2}{*}{junction-splice-sites} & means & 0.24 & 0.0064 & \textbf{0.004} & 0.0087 & 0.011 & 0.012 \\
+ & replicates & 0.14 & \sout{0.012} & \textbf{0.0085} & 0.0089 & 0.23 & 0.23 \\
+\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{2} & \textit{1} & \textit{0} & \textit{1} \\
 \bottomrule
 \end{tabular}
