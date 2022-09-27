@@ -1,0 +1,12 @@
+\begin{tabular}{ll|c|cc|cc|cc}
+\toprule
+{} & {} & {Unit Variance} & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Second Order Mean} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
+{} & {} & {single} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} \\
+{} & {} & {LL} & {LL} & {LL} & {LL} & {LL} & {LL} & {LL} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} & {} \\
+\midrule
+\multirow[t]{2}{*}{mnist} & clean & -7.3e+02 & \sout{8.2e+02} & \sout{9.3e+02} & \textbf{2.1e+03} & \textbf{2.1e+03} & \textbf{2.1e+03} & \textbf{1.8e+03} \\
+ & corrupt & -7.3e+02 & \sout{5.4e+02} & \sout{1.2e+03} & \textbf{1.8e+03} & \sout{1.8e+03} & \textbf{1.8e+03} & \textbf{1.6e+03} \\
+\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{0} & \textit{2} & \textit{1} & \textit{2} & \textit{2} \\
+\bottomrule
+\end{tabular}
