@@ -80,8 +80,7 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
 
     # finalize RMSE table
     best_rmse_models = find_best_model(candidates, rmse, measurements, 'min', 'squared errors', alpha)
-    rmse = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
-    rmse['Dataset'] = dataset
+    df = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
 
     # ECE and QQ weighted squared quantile errors
     ece = pd.Series(index=measurements.index.unique(), dtype=float)
@@ -118,21 +117,24 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     # finalize ECE table
     best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
     ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
-    ece['Dataset'] = dataset
+    df = df.join(ece)
 
     # finalize QQ RMSE table
     qq = qq_wse['QQ WSE'].groupby(level=measurements.index.names).mean() ** 0.5
     best_qq_models = find_best_model(candidates, qq, qq_wse, 'min', 'QQ WSE', alpha)
-    qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ RMSE')
-    qq['Dataset'] = dataset
+    qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ')
+    df = df.join(qq)
 
     # log likelihoods
     ll = measurements['log p(y|x)'].groupby(level=measurements.index.names).mean()
     best_ll_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha, test=stats.ks_2samp)
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
-    ll['Dataset'] = dataset
+    df = df.join(ll)
 
-    return rmse, ece, qq, ll
+    # assign the dataset
+    df['Dataset'] = dataset
+
+    return df
 
 
 def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=MODELS):
@@ -159,13 +161,24 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     style.to_latex(buf=os.path.join('results', file_name), column_format=col_fmt, hrules=True, siunitx=True)
 
 
+def print_tables(df, experiment, heteroscedastic_architecture):
+
+    # print tables
+    suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
+    rows = ['Dataset'] + list(df.index.names)
+    cols = [rows.pop(rows.index('Model'))]
+    if 'Architecture' in rows:
+        cols += [rows.pop(rows.index('Architecture'))]
+
+    for column in ['RMSE', 'ECE', 'QQ', 'LL']:
+        file_name = experiment + '_' + column.lower() + suffix + '.tex'
+        print_table(df[['Dataset', column]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
+
+
 def uci_tables(heteroscedastic_architecture=None, normalized=True):
 
     # loop over datasets with measurements
-    df_rmse = pd.DataFrame()
-    df_ece = pd.DataFrame()
-    df_qq = pd.DataFrame()
-    df_ll = pd.DataFrame()
+    df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(performance_file):
@@ -176,22 +189,10 @@ def uci_tables(heteroscedastic_architecture=None, normalized=True):
                 performance = performance[keep].droplevel('Architecture')
 
             # analyze performance
-            df_rmse_add, df_ece_add, df_qq_add, df_ll_add = analyze_performance(performance, dataset)
-            df_rmse = pd.concat([df_rmse, df_rmse_add])
-            df_ece = pd.concat([df_ece, df_ece_add])
-            df_qq = pd.concat([df_qq, df_qq_add])
-            df_ll = pd.concat([df_ll, df_ll_add])
+            df = pd.concat([df, analyze_performance(performance, dataset)])
 
-    # print tables
-    suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
-    rows = ['Dataset'] + list(df_rmse.index.names)
-    cols = [rows.pop(rows.index('Model'))]
-    if 'Architecture' in rows:
-        cols += [rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='uci_rmse' + suffix + '.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='uci_ece' + suffix + '.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='uci_qq' + suffix + '.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ll.reset_index(), file_name='uci_ll' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    # print the tables
+    print_tables(df, 'uci', heteroscedastic_architecture)
 
 
 def vae_tables(latent_dim=10):
@@ -226,10 +227,7 @@ def vae_tables(latent_dim=10):
 def crispr_tables(heteroscedastic_architecture=None):
 
     # loop over datasets with predictions
-    df_rmse = pd.DataFrame()
-    df_ece = pd.DataFrame()
-    df_qq = pd.DataFrame()
-    df_ll = pd.DataFrame()
+    df = pd.DataFrame()
     for dataset in ['flow-cytometry']: #os.listdir(os.path.join('experiments', 'crispr')):
         performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
         if os.path.exists(performance_file):
@@ -239,22 +237,10 @@ def crispr_tables(heteroscedastic_architecture=None):
             # analyze performance for each observation type
             for observations in performance.index.unique('Observations'):
                 obs_performance = performance[performance.index.get_level_values('Observations') == observations]
-                df_rmse_add, df_ece_add, df_qq_add, df_ll_add = analyze_performance(obs_performance, dataset)
-                df_rmse = pd.concat([df_rmse, df_rmse_add])
-                df_ece = pd.concat([df_ece, df_ece_add])
-                df_qq = pd.concat([df_qq, df_qq_add])
-                df_ll = pd.concat([df_ll, df_ll_add])
+                df = pd.concat([df, analyze_performance(obs_performance, dataset)])
 
-    # print tables
-    suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
-    rows = ['Dataset'] + list(df_rmse.index.names)
-    cols = [rows.pop(rows.index('Model'))]
-    if 'Architecture' in rows:
-        cols += [rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='crispr_rmse' + suffix + '.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ece.reset_index(), file_name='crispr_ece' + suffix + '.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='crispr_qq' + suffix + '.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ll.reset_index(), file_name='crispr_ll' + suffix + '.tex', row_idx=rows, col_idx=cols)
+    # print the tables
+    print_tables(df, 'crispr', heteroscedastic_architecture)
 
 
 def toy_convergence_plots(heteroscedastic_architecture):
