@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='junction-targets', help='which dataset to use')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
-    parser.add_argument('--max_background', type=int, default=20000, help='maximum number of SHAP background samples')
+    parser.add_argument('--max_background', type=int, default=10000, help='maximum number of SHAP background samples')
     parser.add_argument('--num_folds', type=int, default=10, help='number of pre-validation folds')
     parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
     parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
@@ -182,7 +182,7 @@ if __name__ == '__main__':
                     assert max_abs_error == 0.0, 'bad SHAPy cat!'
 
             # compute SHAP values if we don't have them
-            if not index.isin(shap.index):
+            if not index.isin(mean_output.index) or not index.isin(shap.index):
                 tf.keras.utils.set_random_seed(args.seed)
                 num_background_samples = min(args.max_background, x[i_train].shape[0])
                 e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:num_background_samples].numpy())
