@@ -64,18 +64,18 @@ def format_table_entries(series, best_models, unfaithful_models):
 def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='two-sided'):
 
     # RMSE
-    rmse = measurements['squared errors'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
+    rmse = measurements['squared errors'].groupby(level=measurements.index.names).mean() ** 0.5
 
     # identify unfaithful models
     unfaithful_models = []
-    null_squared_errors = measurements.loc[('Unit Variance', 'single'), 'squared errors']
+    null_squared_errors = measurements.loc[('Unit Variance',), 'squared errors']
     for index in measurements.index.unique():
         squared_errors = measurements.loc[index, 'squared errors']
         if stats.ttest_rel(squared_errors, null_squared_errors, alternative='greater')[1] < alpha:
             unfaithful_models += [index]
 
     # exclude any unfaithful model from our candidates list
-    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~rmse.index.isin([('Unit Variance', 'single')])]
+    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~(rmse.index.get_level_values('Model') == 'Unit Variance')]
     candidates = candidates.index.unique()
 
     # finalize RMSE table
@@ -92,6 +92,8 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     weights = np.array([stats.norm.pdf(stats.norm.ppf(q=q)) for q in quantiles])
     weights /= np.sum(weights)
     for index in measurements.index.unique():
+        if not isinstance(index, tuple):
+            index = (index,)
 
         # grab scores (and flatten for multidimensional  targets)
         scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
@@ -119,13 +121,13 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     ece['Dataset'] = dataset
 
     # finalize QQ RMSE table
-    qq = qq_wse['QQ WSE'].groupby(level=['Model', 'Architecture']).mean() ** 0.5
+    qq = qq_wse['QQ WSE'].groupby(level=measurements.index.names).mean() ** 0.5
     best_qq_models = find_best_model(candidates, qq, qq_wse, 'min', 'QQ WSE', alpha)
     qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ RMSE')
     qq['Dataset'] = dataset
 
     # log likelihoods
-    ll = measurements['log p(y|x)'].groupby(level=['Model', 'Architecture']).mean()
+    ll = measurements['log p(y|x)'].groupby(level=measurements.index.names).mean()
     best_ll_models = find_best_model(candidates, ll, measurements, 'max', 'log p(y|x)', alpha, test=stats.ks_2samp)
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     ll['Dataset'] = dataset
@@ -171,7 +173,7 @@ def uci_tables(heteroscedastic_architecture=None, normalized=True):
             performance = performance[performance['normalized'] == normalized]
             if heteroscedastic_architecture is not None:
                 keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
-                performance = performance[keep]
+                performance = performance[keep].droplevel('Architecture')
 
             # analyze performance
             df_rmse_add, df_ece_add, df_qq_add, df_ll_add = analyze_performance(performance, dataset)
@@ -183,7 +185,9 @@ def uci_tables(heteroscedastic_architecture=None, normalized=True):
     # print tables
     suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
     rows = ['Dataset'] + list(df_rmse.index.names)
-    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
+    cols = [rows.pop(rows.index('Model'))]
+    if 'Architecture' in rows:
+        cols += [rows.pop(rows.index('Architecture'))]
     print_table(df_rmse.reset_index(), file_name='uci_rmse' + suffix + '.tex', row_idx=rows, col_idx=cols)
     print_table(df_ece.reset_index(), file_name='uci_ece' + suffix + '.tex', row_idx=rows, col_idx=cols)
     print_table(df_qq.reset_index(), file_name='uci_qq' + suffix + '.tex', row_idx=rows, col_idx=cols)
