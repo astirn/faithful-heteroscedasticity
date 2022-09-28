@@ -1,5 +1,4 @@
 import argparse
-import models
 import os
 import pickle
 
@@ -11,6 +10,7 @@ import tensorflow_addons as tfa
 from callbacks import RegressionCallback
 from datasets import load_tensorflow_dataset
 from metrics import RootMeanSquaredError
+from models import get_models_and_configurations
 
 from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
@@ -75,6 +75,9 @@ if __name__ == '__main__':
     # enable GPU determinism
     tf.config.experimental.enable_op_determinism()
 
+    # models and configurations to run
+    models_and_configurations = get_models_and_configurations(dict(d_hidden=(128, 32)))
+
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
     dim_x = x_clean_train.shape[1:]
@@ -109,7 +112,6 @@ if __name__ == '__main__':
 
     # loop over observation types
     for observations in ['clean', 'corrupt']:
-        print('******************** Observing: {:s} data ********************'.format(observations))
 
         # select training/validation data according to observation type
         if observations == 'clean':
@@ -119,75 +121,70 @@ if __name__ == '__main__':
         else:
             raise NotImplementedError
 
-        # loop over models
-        for i, mdl in enumerate([models.UnitVariance,
-                                 models.Heteroscedastic,
-                                 models.SecondOrderMean,
-                                 models.FaithfulHeteroscedastic]):
+        # loop over models/architectures/configurations
+        for mag in models_and_configurations:
+            print('***** Observing {:s} data w/ a {:s} network *****'.format(observations, mag['architecture']))
 
-            # loop over architectures
-            for architecture in (['single'] if i == 0 else ['separate', 'shared']):
-                print('***** Architecture: {:s} *****'.format(architecture))
+            # model configuration (seed and GPU determinism ensures architectures are identically initialized)
+            tf.keras.utils.set_random_seed(args.seed)
+            if mag['architecture'] == 'separate':
+                model = mag['model'](dim_x=dim_x, dim_y=dim_x, f_trunk=None, f_param=f_encoder_decoder,
+                                     dim_z=args.dim_z, **mag['config'], **mag['nn_kwargs'])
+            elif mag['architecture'] in {'single', 'shared'}:
+                model = mag['model'](dim_x=dim_x, dim_y=dim_x, f_trunk=f_encoder, f_param=f_decoder,
+                                     dim_z=args.dim_z, **mag['config'], **mag['nn_kwargs'])
+            else:
+                raise NotImplementedError
+            optimizer = tf.keras.optimizers.Adam(args.learning_rate)
+            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
 
-                # initialize models
+            # index for this model and observation type
+            model_name = pretty_model_name(model)
+            index = pd.MultiIndex.from_tuples([(model_name, mag['architecture'], observations)],
+                                              names=['Model', 'Architecture', 'Observations'])
+
+            # determine where to save model
+            save_path = os.path.join(exp_path, observations, ''.join([model.name, mag['architecture'].capitalize()]))
+
+            # if set to resume and a trained model and its optimization history exist, load the existing model
+            if not bool(args.replace) \
+               and os.path.exists(os.path.join(save_path, 'checkpoint')) \
+               and index.isin(optimization_history.index):
+                print(model.name + ' exists. Loading...')
+                checkpoint = tf.train.Checkpoint(model)
+                checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
+
+            # otherwise, train and save the model
+            else:
                 tf.keras.utils.set_random_seed(args.seed)
-                if architecture in {'single', 'shared'}:
-                    f_trunk = f_encoder
-                    f_param = f_decoder
-                else:
-                    f_trunk = None
-                    f_param = f_encoder_decoder
-                model = mdl(dim_x=dim_x, dim_y=dim_x, dim_z=args.dim_z, f_param=f_param, f_trunk=f_trunk)
-                model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
-                              run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
+                hist = model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
+                                 batch_size=args.batch_size, epochs=args.epochs, verbose=0,
+                                 callbacks=[RegressionCallback(early_stop_patience=100)])
+                model.save_weights(os.path.join(save_path, 'best_checkpoint'))
+                if index.isin(optimization_history.index):
+                    optimization_history.drop(index, inplace=True)
+                optimization_history = pd.concat([optimization_history, pd.DataFrame(
+                    data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
+                    index=index.repeat(len(hist.epoch)))])
+                optimization_history.to_pickle(opti_history_file)
 
-                # index for this model and observation type
-                model_name = pretty_model_name(model)
-                index = pd.MultiIndex.from_tuples([(model_name, architecture, observations)],
-                                                  names=['Model', 'Architecture', 'Observations'])
+            # generate predictions on the validation set
+            tf.keras.utils.set_random_seed(args.seed)
+            params = model.predict(x=x_valid, verbose=0)
 
-                # determine where to save model
-                save_path = os.path.join(exp_path, observations, ''.join([model.name, architecture.capitalize()]))
+            # update measurements DataFrame (high dimensional objects should go in the dictionary)
+            num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
+            py_x = tfd.Independent(model.predictive_distribution(**params), tf.rank(x_valid) - 1)
+            measurements_df = pd.concat([measurements_df, pd.DataFrame({
+                'log p(y|x)': py_x.log_prob(x_valid),
+                'squared errors': tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels,
+            }, index.repeat(py_x.batch_shape))])
 
-                # if set to resume and a trained model and its optimization history exist, load the existing model
-                if not bool(args.replace) \
-                   and os.path.exists(os.path.join(save_path, 'checkpoint')) \
-                   and index.isin(optimization_history.index):
-                    print(model.name + ' exists. Loading...')
-                    checkpoint = tf.train.Checkpoint(model)
-                    checkpoint.restore(os.path.join(save_path, 'best_checkpoint')).expect_partial()
-
-                # otherwise, train and save the model
-                else:
-                    tf.keras.utils.set_random_seed(args.seed)
-                    hist = model.fit(x=x_train, y=x_train, validation_data=(x_valid, x_valid),
-                                     batch_size=args.batch_size, epochs=args.epochs, verbose=0,
-                                     callbacks=[RegressionCallback(early_stop_patience=100)])
-                    model.save_weights(os.path.join(save_path, 'best_checkpoint'))
-                    if index.isin(optimization_history.index):
-                        optimization_history.drop(index, inplace=True)
-                    optimization_history = pd.concat([optimization_history, pd.DataFrame(
-                        data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
-                        index=index.repeat(len(hist.epoch)))])
-                    optimization_history.to_pickle(opti_history_file)
-
-                # generate predictions on the validation set
-                tf.keras.utils.set_random_seed(args.seed)
-                params = model.predict(x=x_valid, verbose=0)
-
-                # update measurements DataFrame (high dimensional objects should go in the dictionary)
-                num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
-                py_x = tfd.Independent(model.predictive_distribution(**params), tf.rank(x_valid) - 1)
-                measurements_df = pd.concat([measurements_df, pd.DataFrame({
-                    'log p(y|x)': py_x.log_prob(x_valid),
-                    'squared errors': tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels,
-                }, index.repeat(py_x.batch_shape))])
-
-                # update measurements dictionary
-                measurements_dict['Mean'][observations].update({model_name + ' ' + architecture: params['mean']})
-                measurements_dict['Std.'][observations].update({model_name + ' ' + architecture: params['std']})
-                z_scores = (x_valid - params['mean']) / params['std']
-                measurements_dict['Z'][observations].update({model_name + ' ' + architecture: z_scores})
+            # update measurements dictionary
+            measurements_dict['Mean'][observations].update({model_name + ' ' + mag['architecture']: params['mean']})
+            measurements_dict['Std.'][observations].update({model_name + ' ' + mag['architecture']: params['std']})
+            z_scores = (x_valid - params['mean']) / params['std']
+            measurements_dict['Z'][observations].update({model_name + ' ' + mag['architecture']: z_scores})
 
         # save performance measures and model outputs
         measurements_df.to_pickle(os.path.join(exp_path, 'measurements_df.pkl'))
