@@ -135,7 +135,7 @@ if __name__ == '__main__':
             # determine where to save model
             save_path = os.path.join(fold_path, observations, ''.join([model.name, mag['architecture'].capitalize()]))
 
-                # if set to resume and a trained model and its optimization history exist, load the existing model
+            # if set to resume and a trained model and its optimization history exist, load the existing model
             if not bool(args.replace) \
                and os.path.exists(os.path.join(save_path, 'checkpoint')) \
                and index.isin(optimization_history.index):

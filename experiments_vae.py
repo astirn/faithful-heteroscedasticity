@@ -186,7 +186,7 @@ if __name__ == '__main__':
             z_scores = (x_valid - params['mean']) / params['std']
             measurements_dict['Z'][observations].update({model_name + ' ' + mag['architecture']: z_scores})
 
-        # save performance measures and model outputs
-        measurements_df.to_pickle(os.path.join(exp_path, 'measurements_df.pkl'))
-        with open(os.path.join(exp_path, 'measurements_dict.pkl'), 'wb') as f:
-            pickle.dump(measurements_dict, f)
+    # save performance measures and model outputs
+    measurements_df.to_pickle(os.path.join(exp_path, 'measurements_df.pkl'))
+    with open(os.path.join(exp_path, 'measurements_dict.pkl'), 'wb') as f:
+        pickle.dump(measurements_dict, f)
