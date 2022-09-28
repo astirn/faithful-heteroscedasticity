@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
         # loop over models/architectures/configurations
         for mag in models_and_configurations:
-            print('***** Fold {:d}/{:d}: Observing {:s} w/ {:s} network *****'.format(
+            print('***** Fold {:d}/{:d}: Observing {:s} w/ a {:s} network *****'.format(
                 k, args.num_folds, observations, mag['architecture']))
 
             # model configuration (seed and GPU determinism ensures architectures are identically initialized)
