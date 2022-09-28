@@ -92,13 +92,15 @@ if __name__ == '__main__':
     x_corrupt_train = x_clean_train + tfd.Normal(loc=0, scale=tf.gather(noise_std, train_labels)).sample()
     x_corrupt_valid = x_clean_valid + tfd.Normal(loc=0, scale=tf.gather(noise_std, valid_labels)).sample()
 
-    # initialize plotting dictionary
-    plot_dict = {
+    # initialize performance containers
+    measurements_df = pd.DataFrame()
+    measurements_dict = {
         'Class labels': valid_labels,
         'Data': {'clean': x_clean_valid, 'corrupt': x_corrupt_valid},
         'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
         'Mean': {'clean': dict(), 'corrupt': dict()},
-        'Std. deviation':  {'clean': dict(), 'corrupt': dict()},
+        'Std.':  {'clean': dict(), 'corrupt': dict()},
+        'Z':  {'clean': dict(), 'corrupt': dict()},
     }
 
     # initialize/load optimization history
@@ -106,7 +108,6 @@ if __name__ == '__main__':
     optimization_history = pd.read_pickle(opti_history_file) if os.path.exists(opti_history_file) else pd.DataFrame()
 
     # loop over observation types
-    performance = pd.DataFrame()
     for observations in ['clean', 'corrupt']:
         print('******************** Observing: {:s} data ********************'.format(observations))
 
@@ -174,18 +175,21 @@ if __name__ == '__main__':
                 tf.keras.utils.set_random_seed(args.seed)
                 params = model.predict(x=x_valid, verbose=0)
 
-                # save performance measurements
+                # update measurements DataFrame (high dimensional objects should go in the dictionary)
                 num_pixels = tf.cast(tf.reduce_prod(tf.shape(x_valid)[1:]), tf.float32)
-                squared_errors = tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels
-                cdf_y = tf.einsum('abcd->a', model.predictive_distribution(**params).cdf(x_valid)) / num_pixels
-                performance = pd.concat([performance, pd.DataFrame({'squared errors': squared_errors, 'F(y)': cdf_y},
-                                                                   index.repeat(len(squared_errors)))])
+                py_x = tfd.Independent(model.predictive_distribution(**params), tf.rank(x_valid) - 1)
+                measurements_df = pd.concat([measurements_df, pd.DataFrame({
+                    'log p(y|x)': py_x.log_prob(x_valid),
+                    'squared errors': tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels,
+                }, index.repeat(py_x.batch_shape))])
 
-                # save model outputs
-                plot_dict['Mean'][observations].update({model_name + ' ' + architecture: params['mean']})
-                plot_dict['Std. deviation'][observations].update({model_name + ' ' + architecture: params['std']})
+                # update measurements dictionary
+                measurements_dict['Mean'][observations].update({model_name + ' ' + architecture: params['mean']})
+                measurements_dict['Std.'][observations].update({model_name + ' ' + architecture: params['std']})
+                z_scores = (x_valid - params['mean']) / params['std']
+                measurements_dict['Z'][observations].update({model_name + ' ' + architecture: z_scores})
 
         # save performance measures and model outputs
-        performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
-        with open(os.path.join(exp_path, 'plot_dictionary.pkl'), 'wb') as f:
-            pickle.dump(plot_dict, f)
+        measurements_df.to_pickle(os.path.join(exp_path, 'measurements_df.pkl'))
+        with open(os.path.join(exp_path, 'measurements_dict.pkl'), 'wb') as f:
+            pickle.dump(measurements_dict, f)
