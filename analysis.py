@@ -61,7 +61,7 @@ def format_table_entries(series, best_models, unfaithful_models):
     return series
 
 
-def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='two-sided'):
+def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='two-sided', z_scores=None):
 
     # RMSE
     rmse = measurements['squared errors'].groupby(level=measurements.index.names).mean() ** 0.5
@@ -95,7 +95,10 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
             index = (index,)
 
         # grab scores (and flatten for multidimensional  targets)
-        scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
+        if z_scores is None:
+            scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
+        else:
+            scores = z_scores[' '.join(index[:2])].numpy().reshape([-1])
 
         # ECE
         cdf = stats.norm.cdf(scores)
@@ -202,33 +205,29 @@ def uci_tables(heteroscedastic_architecture=None, normalized=True):
     print_tables(df, 'uci', heteroscedastic_architecture)
 
 
-def vae_tables(latent_dim=10):
+def vae_tables(heteroscedastic_architecture=None, latent_dim=10):
 
-    # loop over available measurements
-    df_rmse = pd.DataFrame()
-    df_qq = pd.DataFrame()
-    df_ll = pd.DataFrame()
+    # loop over datasets with measurements
+    df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        performance_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'performance.pkl')
-        if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
-            performance = drop_unused_index_levels(performance)
+        performance_df_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'measurements_df.pkl')
+        performance_dict_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'measurements_dict.pkl')
+        if os.path.exists(performance_df_file) and os.path.exists(performance_dict_file):
+            performance_df = pd.read_pickle(performance_df_file).sort_index()
+            if heteroscedastic_architecture is not None:
+                keep = performance_df.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
+                performance_df = performance_df[keep]
+            with open(performance_dict_file, 'rb') as f:
+                performance_dict = pickle.load(f)
 
-            # analyze performance
-            for i in performance.index.unique('Observations'):
-                index = [slice(None)] * len(performance.index.levels)
-                index[performance.index.names.index('Observations')] = i
-                df_rmse_add, df_qq_add, df_ll_add = analyze_performance(performance.loc[tuple(index)], dataset)
-                df_rmse = pd.concat([df_rmse, df_rmse_dataset])
-                df_qq = pd.concat([df_qq, df_qq_dataset])
-                df_ll = pd.concat([df_ll, df_ll_dataset])
+            # analyze performance for each observation type
+            for observations in performance_df.index.unique('Observations'):
+                obs_performance = performance_df[performance_df.index.get_level_values('Observations') == observations]
+                z_scores = performance_dict['Z'][observations]
+                df = pd.concat([df, analyze_performance(obs_performance, dataset, z_scores=z_scores)])
 
-    # print tables
-    rows = ['Dataset'] + list(df_rmse.index.names)
-    cols = [rows.pop(rows.index('Model')), rows.pop(rows.index('Architecture'))]
-    print_table(df_rmse.reset_index(), file_name='vae_rmse.tex', row_idx=rows, col_idx=cols)
-    print_table(df_qq.reset_index(), file_name='vae_qq.tex', row_idx=rows, col_idx=cols)
-    print_table(df_ll.reset_index(), file_name='vae_ll.tex', row_idx=rows, col_idx=cols)
+    # print the tables
+    print_tables(df, 'vae', heteroscedastic_architecture)  # TODO: add latent dim to file name
 
 
 def crispr_tables(heteroscedastic_architecture=None):
@@ -538,16 +537,18 @@ if __name__ == '__main__':
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
         vae_tables()
-        vae_plots(heteroscedastic_architecture='separate')
-        vae_plots(heteroscedastic_architecture='shared')
+        vae_tables(heteroscedastic_architecture='separate')
+        vae_tables(heteroscedastic_architecture='shared')
+        # vae_plots(heteroscedastic_architecture='separate')
+        # vae_plots(heteroscedastic_architecture='shared')
 
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
         crispr_tables(heteroscedastic_architecture='separate')
         crispr_tables(heteroscedastic_architecture='shared')
-        crispr_motif_plots(heteroscedastic_architecture='separate')
-        crispr_motif_plots(heteroscedastic_architecture='shared')
+        # crispr_motif_plots(heteroscedastic_architecture='separate')
+        # crispr_motif_plots(heteroscedastic_architecture='shared')
 
     # show plots
     plt.show()

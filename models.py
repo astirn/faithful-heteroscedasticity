@@ -82,8 +82,8 @@ class Regression(tf.keras.Model):
             mean, std = self.call(x, training=False).values()
         return tfpd.Normal(loc=mean, scale=std)
 
-    def update_metrics(self, y, mean, std):
-        py_x = self.predictive_distribution(mean=mean, std=std)
+    def update_metrics(self, y, **params):
+        py_x = self.predictive_distribution(**params)
         predictor_values = pack_predictor_values(py_x.mean(), py_x.log_prob(y), py_x.cdf(y))
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
