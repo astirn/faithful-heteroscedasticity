@@ -166,16 +166,20 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
 
 def print_tables(df, experiment, heteroscedastic_architecture):
 
-    # print tables
+    # drop unused index levels
+    df = drop_unused_index_levels(df)
+
+    # configure table rows and columns
     suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
     rows = ['Dataset'] + list(df.index.names)
     cols = [rows.pop(rows.index('Model'))]
     if 'Architecture' in rows:
         cols += [rows.pop(rows.index('Architecture'))]
 
-    for column in ['RMSE', 'ECE', 'QQ', 'LL']:
-        file_name = experiment + '_' + column.lower() + suffix + '.tex'
-        print_table(df[['Dataset', column]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
+    # print metric tables
+    for metric in ['RMSE', 'ECE', 'QQ', 'LL']:
+        file_name = experiment + '_' + metric.lower() + suffix + '.tex'
+        print_table(df[['Dataset', metric]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
 
 
 def uci_tables(heteroscedastic_architecture=None, normalized=True):
@@ -185,7 +189,7 @@ def uci_tables(heteroscedastic_architecture=None, normalized=True):
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(performance_file):
-            performance = drop_unused_index_levels(pd.read_pickle(performance_file).sort_index())
+            performance = pd.read_pickle(performance_file).sort_index()
             performance = performance[performance['normalized'] == normalized]
             if heteroscedastic_architecture is not None:
                 keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
