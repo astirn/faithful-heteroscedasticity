@@ -166,7 +166,7 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
 
 def print_tables(df, experiment, heteroscedastic_architecture):
 
-    # drop unused index levels
+    # drop unused index levels (this is already done except for VAE experiments)
     df = drop_unused_index_levels(df)
 
     # configure table rows and columns
@@ -189,7 +189,7 @@ def uci_tables(heteroscedastic_architecture=None, normalized=True):
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
+            performance = drop_unused_index_levels(pd.read_pickle(performance_file).sort_index())
             performance = performance[performance['normalized'] == normalized]
             if heteroscedastic_architecture is not None:
                 keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
@@ -238,7 +238,7 @@ def crispr_tables(heteroscedastic_architecture=None):
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
         performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
         if os.path.exists(performance_file):
-            performance = pd.read_pickle(performance_file).sort_index()
+            performance = drop_unused_index_levels(pd.read_pickle(performance_file).sort_index())
             performance.index = performance.index.droplevel('Fold')
             if heteroscedastic_architecture is not None:
                 keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
