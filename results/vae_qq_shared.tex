@@ -1,12 +1,12 @@
-\begin{tabular}{ll|c|c|c|c}
+\begin{tabular}{ll|c|c|c|c|c|c}
 \toprule
-{} & {} & {Unit Variance} & {Heteroscedastic} & {Second Order Mean} & {Faithful Heteroscedastic} \\
-{} & {} & {single} & {shared} & {shared} & {shared} \\
-{} & {} & {QQ} & {QQ} & {QQ} & {QQ} \\
-{Dataset} & {Observations} & {} & {} & {} & {} \\
+{} & {} & {Unit Variance} & {Heteroscedastic} & {Beta NLL-0.50} & {Beta NLL-1.00} & {Second Order Mean} & {Faithful Heteroscedastic} \\
+{} & {} & {single} & {shared} & {shared} & {shared} & {shared} & {shared} \\
+{} & {} & {QQ} & {QQ} & {QQ} & {QQ} & {QQ} & {QQ} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} \\
 \midrule
-\multirow[t]{2}{*}{mnist} & clean & 0.068 & \sout{0.035} & \textbf{0.0047} & 0.014 \\
- & corrupt & 0.067 & \sout{0.032} & \sout{0.0085} & \textbf{0.017} \\
-\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{1} & \textit{1} \\
+\multirow[t]{2}{*}{mnist} & clean & 0.068 & \sout{0.035} & 0.069 & 0.011 & \textbf{0.0047} & 0.014 \\
+ & corrupt & 0.067 & \sout{0.032} & \textbf{0.013} & 0.018 & \sout{0.0085} & 0.017 \\
+\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{1} & \textit{0} & \textit{1} & \textit{0} \\
 \bottomrule
 \end{tabular}

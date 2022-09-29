@@ -1,12 +1,12 @@
-\begin{tabular}{ll|c|cc|cc|cc}
+\begin{tabular}{ll|c|cc|cc|cc|cc|cc}
 \toprule
-{} & {} & {Unit Variance} & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Second Order Mean} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
-{} & {} & {single} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} \\
-{} & {} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} \\
-{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} & {} \\
+{} & {} & {Unit Variance} & \multicolumn{2}{r}{Heteroscedastic} & \multicolumn{2}{r}{Beta NLL-0.50} & \multicolumn{2}{r}{Beta NLL-1.00} & \multicolumn{2}{r}{Second Order Mean} & \multicolumn{2}{r}{Faithful Heteroscedastic} \\
+{} & {} & {single} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} & {separate} & {shared} \\
+{} & {} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} \\
 \midrule
-\multirow[t]{2}{*}{mnist} & clean & 0.68 & \sout{0.09} & \sout{0.14} & 0.0091 & \textbf{0.00063} & 0.0062 & 0.013 \\
- & corrupt & 0.64 & \sout{0.092} & \sout{0.055} & 0.011 & \sout{0.0016} & \textbf{0.0075} & 0.019 \\
-\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{1} & \textit{1} & \textit{0} \\
+\multirow[t]{2}{*}{mnist} & clean & 0.68 & \sout{0.09} & \sout{0.14} & \sout{0.091} & 0.086 & 0.0054 & 0.0066 & 0.0091 & \textbf{0.00063} & 0.0062 & 0.013 \\
+ & corrupt & 0.64 & \sout{0.092} & \sout{0.055} & \sout{0.084} & 0.011 & 0.0046 & \textbf{0.0031} & 0.011 & \sout{0.0016} & 0.0075 & 0.019 \\
+\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{1} & \textit{0} & \textit{1} & \textit{0} & \textit{0} \\
 \bottomrule
 \end{tabular}
