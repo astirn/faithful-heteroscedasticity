@@ -7,9 +7,9 @@ import pandas as pd
 import tensorflow as tf
 
 from datasets import generate_toy_data
-from metrics import RootMeanSquaredError, ExpectedCalibrationError
-from models import f_hidden_layers, f_output_layer, f_neural_net, get_models_and_configurations
-from utils import pretty_model_name
+from metrics import RootMeanSquaredError
+from models import f_neural_net, get_models_and_configurations
+from utils import model_config_index, pretty_model_name
 
 # script arguments
 parser = argparse.ArgumentParser()
@@ -18,17 +18,18 @@ parser.add_argument('--epoch_modulo', type=int, default=2000, help='number of ep
 parser.add_argument('--epochs', type=int, default=30000, help='number of training epochs')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
-parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
+parser.add_argument('--seed', type=int, default=123456789, help='random number seed for reproducibility')
 args = parser.parse_args()
 
 # make experimental directory base path
 exp_path = os.path.join('experiments', 'convergence')
 os.makedirs(exp_path, exist_ok=True)
 
-# set random seed
-tf.keras.utils.set_random_seed(args.seed)
+# enable GPU determinism
+tf.config.experimental.enable_op_determinism()
 
 # generate data
+tf.keras.utils.set_random_seed(args.seed)
 data = generate_toy_data()
 with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
     pickle.dump(data, f)
@@ -37,14 +38,8 @@ with open(os.path.join(exp_path, 'data.pkl'), 'wb') as f:
 dim_x = data['x_train'].shape[1]
 dim_y = data['y_train'].shape[1]
 
-# initial network weights
-d_hidden = [args.dim_hidden]
-f_hidden_layer_init = f_hidden_layers(dim_x, d_hidden).get_weights()
-f_mean_output_layer_init = f_output_layer(d_hidden[-1], dim_y, f_out=None).get_weights()
-f_scale_output_layer_init = f_output_layer(d_hidden[-1], dim_y, f_out='softplus').get_weights()
-
 # models, architectures and configurations to run
-nn_kwargs = dict(d_hidden=d_hidden, f_hidden='elu')
+nn_kwargs = dict(f_trunk=None, f_param=f_neural_net, d_hidden=(args.dim_hidden,))
 models_and_configurations = get_models_and_configurations(nn_kwargs)
 
 # initialize/load optimization history
@@ -56,32 +51,14 @@ measurements = pd.read_pickle(measurements_file) if os.path.exists(measurements_
 # loop over models/architectures/configurations
 for mag in models_and_configurations:
 
-    # model configuration
-    if mag['architecture'] == 'separate':
-        model = mag['model'](dim_x=dim_x, dim_y=dim_y, f_trunk=None, f_param=f_neural_net,
-                             **mag['config'], **mag['nn_kwargs'])
-    elif mag['architecture'] in {'single', 'shared'}:
-        model = mag['model'](dim_x=dim_x, dim_y=dim_y, f_trunk=f_hidden_layers, f_param=f_output_layer,
-                             **mag['config'], **mag['nn_kwargs'])
-    else:
-        raise NotImplementedError
+    # model configuration (seed and GPU determinism ensures architectures are identically initialized)
+    tf.keras.utils.set_random_seed(args.seed)
+    model = mag['model'](dim_x=dim_x, dim_y=dim_y, **mag['model_kwargs'], **mag['nn_kwargs'])
+    model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
 
-    # initialize model such that all models share a common initialization
-    model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
-                  metrics=[RootMeanSquaredError(), ExpectedCalibrationError()])
-    if mag['architecture'] in {'single', 'shared'}:
-        model.f_trunk.set_weights(f_hidden_layer_init)
-        model.f_mean.set_weights(f_mean_output_layer_init)
-        if hasattr(model, 'f_scale'):
-            model.f_scale.set_weights(f_scale_output_layer_init)
-    else:
-        model.f_mean.set_weights(f_hidden_layer_init + f_mean_output_layer_init)
-        model.f_scale.set_weights(f_hidden_layer_init + f_scale_output_layer_init)
-
-    # index for this model/architecture
-    model_name = pretty_model_name(model)
-    index = pd.MultiIndex.from_tuples([(model_name, mag['architecture'])], names=['Model', 'Architecture'])
-    print('********** ' + model_name + ' (' + mag['architecture'] + ') **********')
+    # index for this model and configuration
+    model_name = pretty_model_name(model, mag['model_kwargs'])
+    index = model_config_index(model_name, mag['nn_kwargs'])
 
     # if results exist, continue unless we are forcing their replacement
     if not bool(args.replace) and index.isin(opti_history.index) and index.isin(measurements.index):
@@ -103,9 +80,7 @@ for mag in models_and_configurations:
             hist = model.fit(x=data['x_train'], y=data['y_train'],
                              batch_size=data['x_train'].shape[0], epochs=args.epoch_modulo, verbose=0)
             opti_history = pd.concat([opti_history, pd.DataFrame(
-                data={'Epoch': epoch - args.epoch_modulo + np.array(hist.epoch),
-                      'RMSE': hist.history['RMSE'],
-                      'ECE': hist.history['ECE']},
+                data={'Epoch': epoch - args.epoch_modulo + np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
                 index=index.repeat(args.epoch_modulo))])
 
         # measure performance

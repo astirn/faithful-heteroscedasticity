@@ -11,7 +11,7 @@ import seaborn as sns
 import tensorflow as tf
 
 HOMOSCEDASTIC_MODELS = ('Unit Variance',)
-BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL-0.50', 'Beta NLL-1.00')
+BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL (0.5)', 'Beta NLL (1.0)')
 OUR_HETEROSCEDASTIC_MODELS = ('Second Order Mean', 'Faithful Heteroscedastic')
 HETEROSCEDASTIC_MODELS = BASELINE_HETEROSCEDASTIC_MODELS + OUR_HETEROSCEDASTIC_MODELS
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
@@ -252,48 +252,25 @@ def crispr_tables(heteroscedastic_architecture=None):
     print_tables(df, 'crispr', heteroscedastic_architecture)
 
 
-def toy_convergence_plots(heteroscedastic_architecture):
+def toy_convergence_plots():
 
     # ensure requisite files exist
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
-    opti_hist_file = os.path.join('experiments', 'convergence', 'optimization_history.pkl')
     measurements_file = os.path.join('experiments', 'convergence', 'measurements.pkl')
-    if not os.path.exists(data_file) or not os.path.exists(opti_hist_file) or not os.path.exists(measurements_file):
+    if not os.path.exists(data_file) or not os.path.exists(measurements_file):
         return
 
-    # load data, metrics, and measurements
+    # load data and measurements
     with open(data_file, 'rb') as f:
         data = pickle.load(f)
-    opti_hist = pd.read_pickle(opti_hist_file).reset_index()
-    measurements = pd.read_pickle(measurements_file)
-
-    # # learning curve figure
-    # fig_learning_curve, ax = plt.subplots(ncols=2, figsize=(10, 5))
-    # sns.lineplot(data=metrics, x='Epoch', y='RMSE', hue='Model', style='Model', ax=ax[0])
-    # sns.lineplot(data=metrics, x='Epoch', y='ECE', hue='Model', style='Model', ax=ax[1])
-    # plt.tight_layout()
-    # fig_learning_curve.savefig(os.path.join('results', 'toy_learning_curve.pdf'))
-    # learning curve
-    # df = metrics[(metrics.Model == model) & (metrics.Architecture == architecture)]
-    # ax[2, i].plot(df['Epoch'], df['RMSE'], color='tab:blue')
-    # ax[2, i].set_xlabel('Epoch')
-    # ax[2, i].set_ylabel('RMSE', color='tab:blue')
-    # ax[2, i].set_ylim([0, None])
-    # ax[2, i].tick_params(axis='y', labelcolor='tab:blue')
-    # ax_twin = ax[2, i].twinx()
-    # ax_twin.plot(df['Epoch'], df['ECE'], color='tab:orange')
-    # ax_twin.set_ylabel('ECE', color='tab:orange')
-    # ax_twin.set_ylim([0, None])
-    # ax_twin.tick_params(axis='y', labelcolor='tab:orange')
+    measurements = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
+    assert measurements.index.names == ['Model'], 'multiple configurations per model is not supported'
 
     # convergence figure
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
-    measurements.reset_index(inplace=True)
-    fig, ax = plt.subplots(nrows=2, ncols=len(MODELS), figsize=(5 * len(MODELS), 10))
-    fig.suptitle('Converge for {:s} architecture'.format(heteroscedastic_architecture))
+    models_and_configs = measurements.index.unique()
+    fig, ax = plt.subplots(nrows=2, ncols=len(models_and_configs), figsize=(5 * len(models_and_configs), 10))
     for i, model in enumerate(MODELS):
-        architecture = 'single' if model in HOMOSCEDASTIC_MODELS else heteroscedastic_architecture
-
         # title
         ax[0, i].set_title(model)
 
@@ -305,7 +282,7 @@ def toy_convergence_plots(heteroscedastic_architecture):
         ax[1, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[1, i].get_xaxis_transform())
 
         # predictive moments
-        df = measurements[(measurements.Model == model) & (measurements.Architecture == architecture)]
+        df = measurements.loc[model].reset_index()
         legend = 'full' if i == len(MODELS) - 1 else False
         sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=legend, palette=palette, ax=ax[0, i])
         sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=legend, palette=palette, ax=ax[1, i])
@@ -320,7 +297,7 @@ def toy_convergence_plots(heteroscedastic_architecture):
     ax[0, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     ax[1, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     plt.tight_layout()
-    fig.savefig(os.path.join('results', 'toy_convergence_' + heteroscedastic_architecture + '.pdf'))
+    fig.savefig(os.path.join('results', 'toy_convergence.pdf'))
 
 
 def vae_plots(heteroscedastic_architecture, latent_dim=10, examples_per_class=1):
@@ -525,8 +502,7 @@ if __name__ == '__main__':
 
     # convergence experiment
     if args.experiment in {'all', 'convergence'} and os.path.exists(os.path.join('experiments', 'convergence')):
-        toy_convergence_plots(heteroscedastic_architecture='separate')
-        toy_convergence_plots(heteroscedastic_architecture='shared')
+        toy_convergence_plots()
 
     # UCI experiments
     if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):

@@ -205,7 +205,7 @@ class BetaNLL(Heteroscedastic, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, beta=0.5, **kwargs):
         Heteroscedastic.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
-                                 name='BetaNLL-{:.2f}'.format(beta), **kwargs)
+                                 name='BetaNLL', **kwargs)
         self.likelihood = 'Normal'
         self.beta = beta
 
@@ -222,17 +222,12 @@ class BetaNLL(Heteroscedastic, ABC):
 
 def get_models_and_configurations(nn_kwargs):
     return [
-        dict(model=UnitVariance, architecture='single', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=Heteroscedastic, architecture='separate', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=Heteroscedastic, architecture='shared', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=SecondOrderMean, architecture='separate', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=SecondOrderMean, architecture='shared', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedastic, architecture='separate', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedastic, architecture='shared', config=dict(), nn_kwargs=nn_kwargs),
-        dict(model=BetaNLL, architecture='separate', config=dict(beta=0.5), nn_kwargs=nn_kwargs),
-        dict(model=BetaNLL, architecture='shared', config=dict(beta=0.5), nn_kwargs=nn_kwargs),
-        dict(model=BetaNLL, architecture='separate', config=dict(beta=1.0), nn_kwargs=nn_kwargs),
-        dict(model=BetaNLL, architecture='shared', config=dict(beta=1.0), nn_kwargs=nn_kwargs),
+        dict(model=UnitVariance, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=Heteroscedastic, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedastic, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
+        dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
     ]
 
 
