@@ -176,7 +176,7 @@ def print_tables(df, experiment):
     configurations = [tuple()] if df.index.names == ['Model'] else df.index.droplevel('Model').unique()
     for config in configurations:
         df_config = drop_unused_index_levels(df.loc[(slice(None),) + config])
-        suffix = [] if len(configurations) == 1 else '-'.join(config).replace(' ', '')
+        suffix = [] if len(configurations) == 1 else ['-'.join(config).replace(' ', '')]
 
         # configure table rows and columns
         rows = ['Dataset'] + list(df_config.index.names)
