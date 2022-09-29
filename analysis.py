@@ -167,24 +167,27 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     style.to_latex(buf=file_name, column_format=col_fmt, hrules=True, multirow_align='t', siunitx=True)
 
 
-def print_tables(df, experiment, heteroscedastic_architecture):
+def print_tables(df, experiment):
+    assert df.index.names[0] == 'Model', '"Model" needs to be first index level'
     if len(df) == 0:
         return
 
-    # drop unused index levels (this is already done except for VAE experiments)
-    df = drop_unused_index_levels(df)
+    # each configuration gets its own table
+    configurations = [tuple()] if df.index.names == ['Model'] else df.index.droplevel('Model').unique()
+    for config in configurations:
+        df_config = drop_unused_index_levels(df.loc[(slice(None),) + config])
+        suffix = [] if len(configurations) == 1 else '-'.join(config).replace(' ', '')
 
-    # configure table rows and columns
-    suffix = '' if heteroscedastic_architecture is None else '_' + heteroscedastic_architecture
-    rows = ['Dataset'] + list(df.index.names)
-    cols = [rows.pop(rows.index('Model'))]
-    if 'Architecture' in rows:
-        cols += [rows.pop(rows.index('Architecture'))]
+        # configure table rows and columns
+        rows = ['Dataset'] + list(df_config.index.names)
+        cols = [rows.pop(rows.index('Model'))]
+        if 'Architecture' in rows:
+            cols += [rows.pop(rows.index('Architecture'))]
 
-    # print metric tables
-    for metric in ['RMSE', 'ECE', 'QQ', 'LL']:
-        file_name = experiment + '_' + metric.lower() + suffix + '.tex'
-        print_table(df[['Dataset', metric]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
+        # print metric tables
+        for metric in ['RMSE', 'ECE', 'QQ', 'LL']:
+            file_name = '_'.join([experiment, metric.lower()] + suffix) + '.tex'
+            print_table(df_config[['Dataset', metric]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
 
 
 def uci_tables(normalized=True):
@@ -194,14 +197,14 @@ def uci_tables(normalized=True):
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         measurements_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
-            performance_file = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
-            performance_file = performance_file[performance_file['normalized'] == normalized]
+            measurements = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
+            measurements = measurements[measurements['normalized'] == normalized]
 
             # analyze performance
-            df = pd.concat([df, analyze_performance(performance, dataset)])
+            df = pd.concat([df, analyze_performance(measurements, dataset)])
 
     # print the tables
-    print_tables(df, 'uci', heteroscedastic_architecture)
+    print_tables(df, 'uci')
 
 
 def vae_tables(heteroscedastic_architecture=None, latent_dim=10):
