@@ -19,7 +19,6 @@ tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU'
 
 
 def f_hidden_layers(d_in, d_hidden, **kwargs):
-    assert isinstance(d_in, int) and d_in > 0
     assert isinstance(d_hidden, (list, tuple)) and all(isinstance(d, int) for d in d_hidden)
     nn = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(d_in)], name=kwargs.get('name'))
     for d in d_hidden:
@@ -28,7 +27,6 @@ def f_hidden_layers(d_in, d_hidden, **kwargs):
 
 
 def f_output_layer(d_in, d_out, f_out, **kwargs):
-    assert isinstance(d_in, int) and d_in > 0
     assert isinstance(d_out, int) and d_out > 0
     return tf.keras.Sequential(name=kwargs.get('name'), layers=[
         tf.keras.layers.InputLayer(d_in),
@@ -100,8 +98,7 @@ class UnitVariance(Regression, ABC):
         else:
             self.f_trunk = f_trunk(dim_x, **kwargs)
             dim_latent = self.f_trunk.output_shape[1:]
-            assert len(dim_latent) == 1
-            self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_mean = f_param(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
         mean = self.f_mean(self.f_trunk(x, **kwargs), **kwargs)
@@ -130,9 +127,8 @@ class Heteroscedastic(Regression, ABC):
         else:
             self.f_trunk = f_trunk(dim_x, **kwargs)
             dim_latent = self.f_trunk.output_shape[1:]
-            assert len(dim_latent) == 1
-            self.f_mean = f_param(d_in=dim_latent[0], d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-            self.f_scale = f_param(d_in=dim_latent[0], d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+            self.f_mean = f_param(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+            self.f_scale = f_param(d_in=dim_latent, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
