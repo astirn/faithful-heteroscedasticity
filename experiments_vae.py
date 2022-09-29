@@ -11,10 +11,10 @@ from callbacks import RegressionCallback
 from datasets import load_tensorflow_dataset
 from metrics import RootMeanSquaredError
 from models import get_models_and_configurations
+from utils import model_config_dir, model_config_index, pretty_model_name
 
 from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
-from utils import pretty_model_name
 
 
 def f_encoder(d_in, dim_z, **kwargs):
@@ -69,14 +69,15 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # make experimental directory base path
-    exp_path = os.path.join('experiments', 'vae', args.dataset, str(args.dim_z))
+    exp_path = os.path.join('experiments', 'vae', args.dataset)
     os.makedirs(exp_path, exist_ok=True)
 
     # enable GPU determinism
     tf.config.experimental.enable_op_determinism()
 
     # models and configurations to run
-    models_and_configurations = get_models_and_configurations(dict(d_hidden=(128, 32)))
+    nn_kwargs = dict(f_trunk=f_encoder, f_param=f_decoder, dim_z=args.dim_z)
+    models_and_configurations = get_models_and_configurations(nn_kwargs)
 
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
@@ -123,28 +124,20 @@ if __name__ == '__main__':
 
         # loop over models/architectures/configurations
         for mag in models_and_configurations:
-            print('***** Observing {:s} data w/ a {:s} network *****'.format(observations, mag['architecture']))
 
             # model configuration (seed and GPU determinism ensures architectures are identically initialized)
             tf.keras.utils.set_random_seed(args.seed)
-            if mag['architecture'] == 'separate':
-                model = mag['model'](dim_x=dim_x, dim_y=dim_x, f_trunk=None, f_param=f_encoder_decoder,
-                                     dim_z=args.dim_z, **mag['config'], **mag['nn_kwargs'])
-            elif mag['architecture'] in {'single', 'shared'}:
-                model = mag['model'](dim_x=dim_x, dim_y=dim_x, f_trunk=f_encoder, f_param=f_decoder,
-                                     dim_z=args.dim_z, **mag['config'], **mag['nn_kwargs'])
-            else:
-                raise NotImplementedError
-            optimizer = tf.keras.optimizers.Adam(args.learning_rate)
-            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
+            model = mag['model'](dim_x=dim_x, dim_y=dim_x, **mag['model_kwargs'], **mag['nn_kwargs'])
+            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
 
-            # index for this model and observation type
-            model_name = pretty_model_name(model)
-            index = pd.MultiIndex.from_tuples([(model_name, mag['architecture'], observations)],
-                                              names=['Model', 'Architecture', 'Observations'])
+            # index for this model and configuration
+            model_name = pretty_model_name(model, mag['model_kwargs'])
+            index, index_str = model_config_index(model_name, {**{'Observations': observations}, **mag['nn_kwargs']})
+            print('***** {:s} *****'.format(index_str))
 
             # determine where to save model
-            save_path = os.path.join(exp_path, observations, ''.join([model.name, mag['architecture'].capitalize()]))
+            save_path = os.path.join(exp_path, observations)
+            save_path = model_config_dir(save_path, model, mag['model_kwargs'], mag['nn_kwargs'])
 
             # if set to resume and a trained model and its optimization history exist, load the existing model
             if not bool(args.replace) \
