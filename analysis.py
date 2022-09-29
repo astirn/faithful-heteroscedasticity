@@ -54,7 +54,7 @@ def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha
 def format_table_entries(series, best_models, unfaithful_models):
 
     # format numerical values, bold best values, and strikeout unfaithful models
-    series = series.apply(lambda x: '{:.2g}'.format(x))
+    series = series.apply(lambda x: '{:.3g}'.format(x))
     series.loc[best_models] = series.loc[best_models].apply(lambda s: '\\textbf{{{:s}}}'.format(s))
     series.loc[unfaithful_models] = series.loc[unfaithful_models].apply(lambda s: '\\sout{{{:s}}}'.format(s))
 
