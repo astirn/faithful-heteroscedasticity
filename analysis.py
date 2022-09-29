@@ -168,6 +168,8 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
 
 
 def print_tables(df, experiment, heteroscedastic_architecture):
+    if len(df) == 0:
+        return
 
     # drop unused index levels (this is already done except for VAE experiments)
     df = drop_unused_index_levels(df)
@@ -185,18 +187,15 @@ def print_tables(df, experiment, heteroscedastic_architecture):
         print_table(df[['Dataset', metric]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
 
 
-def uci_tables(heteroscedastic_architecture=None, normalized=True):
+def uci_tables(normalized=True):
 
     # loop over datasets with measurements
     df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
-        performance_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
-        if os.path.exists(performance_file):
-            performance = drop_unused_index_levels(pd.read_pickle(performance_file).sort_index())
-            performance = performance[performance['normalized'] == normalized]
-            if heteroscedastic_architecture is not None:
-                keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
-                performance = performance[keep].droplevel('Architecture')
+        measurements_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
+        if os.path.exists(measurements_file):
+            performance_file = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
+            performance_file = performance_file[performance_file['normalized'] == normalized]
 
             # analyze performance
             df = pd.concat([df, analyze_performance(performance, dataset)])
@@ -506,9 +505,7 @@ if __name__ == '__main__':
 
     # UCI experiments
     if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):
-        uci_tables()
-        uci_tables(heteroscedastic_architecture='separate')
-        uci_tables(heteroscedastic_architecture='shared')
+        uci_tables(normalized=True)
 
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):

@@ -1,3 +1,7 @@
+import os
+import json
+import zlib
+
 import pandas as pd
 import tensorflow as tf
 
@@ -46,3 +50,12 @@ def model_config_index(model_name, kwargs):
     print('********** ' + str(index) + ' **********')
     index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
     return index
+
+
+def model_config_dir(base_path, model, model_kwargs, nn_kwargs):
+    kwargs = {**model_kwargs, **nn_kwargs}
+    for key, value in kwargs.items():
+        value = value.__name__ if callable(value) else str(value)
+        kwargs.update({key: value})
+    config_dir = str(zlib.crc32(json.dumps(kwargs).encode('utf-8')))
+    return os.path.join(base_path, model.name, config_dir)

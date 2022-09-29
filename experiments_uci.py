@@ -11,9 +11,9 @@ import tensorflow as tf
 from callbacks import RegressionCallback
 from datasets import create_or_load_fold
 from metrics import RootMeanSquaredError
-from models import f_hidden_layers, f_output_layer, f_neural_net, get_models_and_configurations
+from models import f_hidden_layers, f_output_layer, get_models_and_configurations
 from sklearn import preprocessing
-from utils import pretty_model_name, ZScoreNormalization
+from utils import model_config_dir, model_config_index, pretty_model_name, ZScoreNormalization
 
 from tensorflow_probability import distributions as tfd
 
@@ -21,6 +21,7 @@ from tensorflow_probability import distributions as tfd
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='boston', help='which dataset to use')
 parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
+parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--num_folds', type=int, default=10, help='number of folds')
 parser.add_argument('--num_trials', type=int, default=1, help='number of trials per fold')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
@@ -35,7 +36,8 @@ os.makedirs(exp_path, exist_ok=True)
 tf.config.experimental.enable_op_determinism()
 
 # models and configurations to run
-models_and_configurations = get_models_and_configurations(dict(d_hidden=(50, 50), f_hidden='elu'))
+nn_kwargs = dict(f_trunk=f_hidden_layers, f_param=f_output_layer, d_hidden=(50, 50))
+models_and_configurations = get_models_and_configurations(nn_kwargs)
 
 # loop over trials
 measurements = pd.DataFrame()
@@ -73,26 +75,18 @@ for trial in range(1, args.num_trials + 1):
 
         # loop over models/architectures/configurations
         for mag in models_and_configurations:
-            print('\n********* Fold {:d} | Trial {:d} *********'.format(fold, trial))
 
             # model configuration (seed and GPU determinism ensures architectures are identically initialized)
-            tf.keras.utils.set_random_seed(fold_seed)
-            if mag['architecture'] == 'separate':
-                model = mag['model'](dim_x=x_train.shape[1], dim_y=y_train.shape[1],
-                                     f_trunk=None, f_param=f_neural_net,
-                                     **mag['config'], **mag['nn_kwargs'])
-            elif mag['architecture'] in {'single', 'shared'}:
-                model = mag['model'](dim_x=x_train.shape[1], dim_y=y_train.shape[1],
-                                     f_trunk=f_hidden_layers, f_param=f_output_layer,
-                                     **mag['config'], **mag['nn_kwargs'])
-            else:
-                raise NotImplementedError
-            optimizer = tf.keras.optimizers.Adam(1e-3)
-            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
+            tf.keras.utils.set_random_seed(args.seed)
+            model = mag['model'](dim_x=dim_x, dim_y=dim_y, **mag['model_kwargs'], **mag['nn_kwargs'])
+            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+
+            # index for this model and configuration
+            model_name = pretty_model_name(model, mag['model_kwargs'])
+            index = model_config_index(model_name, mag['nn_kwargs'])
 
             # determine where to save model
-            config_dir = str(zlib.crc32(json.dumps(mag['nn_kwargs']).encode('utf-8')))
-            save_path = os.path.join(fold_path, ''.join([model.name, mag['architecture'].capitalize()]), config_dir)
+            save_path = model_config_dir(fold_path, model, mag['model_kwargs'], mag['nn_kwargs'])
 
             # if we are set to resume and the model directory already contains a saved model, load it
             if not bool(args.replace) and os.path.exists(os.path.join(save_path, 'checkpoint')):
@@ -113,11 +107,6 @@ for trial in range(1, args.num_trials + 1):
                 history = hist.history
                 with open(os.path.join(save_path, 'hist.pkl'), 'wb') as f:
                     pickle.dump(history, f)
-
-            # index for this model and configuration
-            index = {'Model': pretty_model_name(model), 'Architecture': mag['architecture']}
-            index.update(mag['nn_kwargs'])
-            index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
 
             # save local performance measurements
             params = model.predict(x=x_valid, verbose=0)
