@@ -17,40 +17,35 @@ from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
 
 
-def f_encoder(d_in, dim_z, **kwargs):
+def f_trunk(d_in, **kwargs):
+    return tf.keras.Sequential(layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Conv2D(16, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(16, 5, strides=2, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(32, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='relu'),
+    ])
+
+
+def f_param(d_in, d_out, dim_z, f_out, **kwargs):
     prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
     # weight = 0.5 is a workaround for: https://github.com/tensorflow/probability/issues/1215
     dkl = tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True, weight=0.5)
-    return tf.keras.Sequential(layers=[
+    m = tf.keras.Sequential(layers=[
         tf.keras.layers.InputLayer(d_in),
-        tf.keras.layers.Conv2D(32, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(64, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(64, 5, strides=2, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(128, 7, strides=1, padding='valid', activation='relu'),
+        tf.keras.layers.Conv2D(64, 7, strides=1, padding='valid', activation='relu'),
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
-        tfpl.IndependentNormal(dim_z, activity_regularizer=dkl)
-    ])
-
-
-def f_decoder(d_in, d_out, f_out, **kwargs):
-    return tf.keras.Sequential(layers=[
-        tf.keras.layers.InputLayer(d_in),
-        tf.keras.layers.Reshape([1, 1, d_in]),
+        tfpl.IndependentNormal(dim_z, activity_regularizer=dkl),
+        tf.keras.layers.Reshape([1, 1, dim_z]),
         tf.keras.layers.Conv2DTranspose(64, 7, strides=1, padding='valid', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(64, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(64, 5, strides=2, padding='same', activation='relu'),
         tf.keras.layers.Conv2DTranspose(32, 5, strides=1, padding='same', activation='relu'),
         tf.keras.layers.Conv2DTranspose(32, 5, strides=2, padding='same', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(32, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(16, 5, strides=1, padding='same', activation='relu'),
+        tf.keras.layers.Conv2DTranspose(16, 5, strides=2, padding='same', activation='relu'),
         tf.keras.layers.Conv2D(1, 5, strides=1, padding='same', activation=f_out),
     ])
-
-
-def f_encoder_decoder(d_in, d_out, f_out, **kwargs):
-    m = f_encoder(d_in, **kwargs)
-    m.add(f_decoder(kwargs.pop('dim_z'), d_out, f_out, **kwargs))
+    assert m.output_shape[1:] == d_out
     return m
 
 
@@ -76,7 +71,7 @@ if __name__ == '__main__':
     tf.config.experimental.enable_op_determinism()
 
     # models and configurations to run
-    nn_kwargs = dict(f_trunk=f_encoder, f_param=f_decoder, dim_z=args.dim_z)
+    nn_kwargs = dict(dim_z=args.dim_z, f_trunk=f_trunk, f_param=f_param)
     models_and_configurations = get_models_and_configurations(nn_kwargs)
 
     # load data
