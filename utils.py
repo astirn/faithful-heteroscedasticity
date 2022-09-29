@@ -43,13 +43,12 @@ def pretty_model_name(model, model_kwargs):
 
 
 def model_config_index(model_name, kwargs):
-    index = {'Model': model_name}
+    index_dict = {'Model': model_name}
     for key, value in kwargs.items():
         value = value.__name__ if callable(value) else str(value)
-        index.update({key: value})
-    print('********** ' + str(index) + ' **********')
-    index = pd.MultiIndex.from_tuples([tuple(index.values())], names=list(index.keys()))
-    return index
+        index_dict.update({key: value})
+    index = pd.MultiIndex.from_tuples([tuple(index_dict.values())], names=list(index_dict.keys()))
+    return index, str(str(index_dict))
 
 
 def model_config_dir(base_path, model, model_kwargs, nn_kwargs):
