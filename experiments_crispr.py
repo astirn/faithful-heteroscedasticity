@@ -13,7 +13,7 @@ from layers import SHAPyCat
 from metrics import RootMeanSquaredError
 from models import f_neural_net, get_models_and_configurations
 from shap import DeepExplainer
-from utils import pretty_model_name
+from utils import model_config_dir, model_config_index, pretty_model_name
 
 from tensorflow_probability import distributions as tfd
 
@@ -57,7 +57,8 @@ if __name__ == '__main__':
     tf.config.experimental.enable_op_determinism()
 
     # models and configurations to run
-    models_and_configurations = get_models_and_configurations(dict(d_hidden=(128, 32)))
+    nn_kwargs = dict(f_trunk=f_conv_net, f_param=f_neural_net, d_hidden=(128, 32))
+    models_and_configurations = get_models_and_configurations(nn_kwargs)
 
     # load data
     with open(os.path.join('data', 'crispr', args.dataset + '.pkl'), 'rb') as f:
@@ -84,7 +85,7 @@ if __name__ == '__main__':
     shap = pd.read_pickle(shap_file) if os.path.exists(shap_file) else pd.DataFrame()
 
     # loop over validation folds and observations
-    performance = pd.DataFrame()
+    measurements = pd.DataFrame()
     for k, observations in itertools.product(range(1, args.num_folds + 1), ['means', 'replicates']):
         fold_path = os.path.join(exp_path, 'fold_' + str(k))
         i_train, i_valid = tf.not_equal(folds, k), tf.equal(folds, k)
@@ -112,28 +113,20 @@ if __name__ == '__main__':
 
         # loop over models/architectures/configurations
         for mag in models_and_configurations:
-            print('***** Fold {:d}/{:d}: Observing {:s} w/ a {:s} network *****'.format(
-                k, args.num_folds, observations, mag['architecture']))
 
             # model configuration (seed and GPU determinism ensures architectures are identically initialized)
-            tf.keras.utils.set_random_seed(fold_seed)
-            if mag['architecture'] == 'separate':
-                model = mag['model'](dim_x=x.shape[1:], dim_y=1, f_trunk=None, f_param=f_le_net,
-                                     **mag['config'], **mag['nn_kwargs'])
-            elif mag['architecture'] in {'single', 'shared'}:
-                model = mag['model'](dim_x=x.shape[1:], dim_y=1, f_trunk=f_conv_net, f_param=f_neural_net,
-                                     **mag['config'], **mag['nn_kwargs'])
-            else:
-                raise NotImplementedError
-            optimizer = tf.keras.optimizers.Adam(args.learning_rate)
-            model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[RootMeanSquaredError()])
+            tf.keras.utils.set_random_seed(args.seed)
+            model = mag['model'](dim_x=x.shape[1:], dim_y=1, **mag['model_kwargs'], **mag['nn_kwargs'])
+            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
 
-            # index for this model and observation type
-            index = pd.MultiIndex.from_tuples([(pretty_model_name(model), mag['architecture'], observations, k)],
-                                              names=['Model', 'Architecture', 'Observations', 'Fold'])
+            # index for this model and configuration
+            model_name = pretty_model_name(model, mag['model_kwargs'])
+            index, index_str = model_config_index(model_name, {**{'Observations': observations}, **mag['nn_kwargs']})
+            print('***** Fold {:d}/{:d}: {:s} *****'.format(k, args.num_folds, index_str))
 
             # determine where to save model
-            save_path = os.path.join(fold_path, observations, ''.join([model.name, mag['architecture'].capitalize()]))
+            save_path = os.path.join(fold_path, observations)
+            save_path = model_config_dir(save_path, model, mag['model_kwargs'], mag['nn_kwargs'])
 
             # if set to resume and a trained model and its optimization history exist, load the existing model
             if not bool(args.replace) \
@@ -167,7 +160,7 @@ if __name__ == '__main__':
 
             # save performance measurements
             py_x = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1)
-            performance = pd.concat([performance, pd.DataFrame({
+            measurements = pd.concat([measurements, pd.DataFrame({
                 'log p(y|x)': py_x.log_prob(y_valid),
                 'squared errors': tf.reduce_sum((y_valid - params['mean']) ** 2, axis=-1),
                 'z': ((y_valid - params['mean']) / params['std']).numpy().tolist(),
@@ -201,4 +194,4 @@ if __name__ == '__main__':
             tf.config.experimental.enable_op_determinism()
 
     # save performance measures and SHAP values
-    performance.to_pickle(os.path.join(exp_path, 'performance.pkl'))
+    measurements.to_pickle(os.path.join(exp_path, 'measurements.pkl'))

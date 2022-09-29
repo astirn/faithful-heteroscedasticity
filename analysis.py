@@ -167,24 +167,29 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     style.to_latex(buf=file_name, column_format=col_fmt, hrules=True, multirow_align='t', siunitx=True)
 
 
-def print_tables(df, experiment):
-    assert df.index.names[0] == 'Model', '"Model" needs to be first index level'
+def print_tables(df, experiment, non_config_indices=('Model',)):
     if len(df) == 0:
         return
+    assert df.index.names[0] == 'Model', '"Model" needs to be first index level'
 
     # each configuration gets its own table
-    configurations = [tuple()] if df.index.names == ['Model'] else df.index.droplevel('Model').unique()
+    if df.index.names == non_config_indices:
+        configurations = [tuple()]
+    else:
+        configurations = df.index.droplevel(non_config_indices).unique()
     for config in configurations:
-        df_config = drop_unused_index_levels(df.loc[(slice(None),) + config])
-        suffix = [] if len(configurations) == 1 else ['-'.join(config).replace(' ', '')]
+        if isinstance(df.index, pd.MultiIndex):
+            df_config = df.loc[(slice(None),) + config, :]
+        else:
+            df_config = df.loc[(slice(None),) + config]
+        df_config = drop_unused_index_levels(df_config)
 
         # configure table rows and columns
         rows = ['Dataset'] + list(df_config.index.names)
         cols = [rows.pop(rows.index('Model'))]
-        if 'Architecture' in rows:
-            cols += [rows.pop(rows.index('Architecture'))]
 
         # print metric tables
+        suffix = [] if len(configurations) == 1 else ['-'.join(config).replace(' ', '')]
         for metric in ['RMSE', 'ECE', 'QQ', 'LL']:
             file_name = '_'.join([experiment, metric.lower()] + suffix) + '.tex'
             print_table(df_config[['Dataset', metric]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
@@ -232,26 +237,22 @@ def vae_tables(heteroscedastic_architecture=None, latent_dim=10):
     print_tables(df, 'vae', heteroscedastic_architecture)  # TODO: add latent dim to file name
 
 
-def crispr_tables(heteroscedastic_architecture=None):
+def crispr_tables():
 
-    # loop over datasets with predictions
+    # loop over datasets with measurements
     df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
-        performance_file = os.path.join('experiments', 'crispr', dataset, 'performance.pkl')
-        if os.path.exists(performance_file):
-            performance = drop_unused_index_levels(pd.read_pickle(performance_file).sort_index())
-            performance.index = performance.index.droplevel('Fold')
-            if heteroscedastic_architecture is not None:
-                keep = performance.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
-                performance = performance[keep].droplevel('Architecture')
+        measurements_file = os.path.join('experiments', 'crispr', dataset, 'measurements.pkl')
+        if os.path.exists(measurements_file):
+            measurements = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
 
             # analyze performance for each observation type
-            for observations in performance.index.unique('Observations'):
-                obs_performance = performance[performance.index.get_level_values('Observations') == observations]
+            for observations in measurements.index.unique('Observations'):
+                obs_performance = measurements[measurements.index.get_level_values('Observations') == observations]
                 df = pd.concat([df, analyze_performance(obs_performance, dataset)])
 
     # print the tables
-    print_tables(df, 'crispr', heteroscedastic_architecture)
+    print_tables(df, 'crispr', non_config_indices=('Model', 'Observations'))
 
 
 def toy_convergence_plots():
@@ -521,8 +522,6 @@ if __name__ == '__main__':
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
-        crispr_tables(heteroscedastic_architecture='separate')
-        crispr_tables(heteroscedastic_architecture='shared')
         # crispr_motif_plots(heteroscedastic_architecture='separate')
         # crispr_motif_plots(heteroscedastic_architecture='shared')
 
