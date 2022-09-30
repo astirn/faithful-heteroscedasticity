@@ -1,0 +1,11 @@
+\begin{tabular}{ll|c|c|c|c|c|c}
+\toprule
+{} & {} & {Unit Variance} & {Heteroscedastic} & {Beta NLL (0.5)} & {Beta NLL (1.0)} & {Second Order Mean} & {Faithful Heteroscedastic} \\
+{} & {} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} & {ECE} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} \\
+\midrule
+\multirow[t]{2}{*}{mnist} & clean & 0.664 & \sout{0.0998} & \sout{0.0169} & \textbf{0.00376} & \sout{0.00342} & 0.00579 \\
+ & corrupt & 0.629 & \sout{0.0793} & 0.00493 & \textbf{0.00343} & \sout{0.00444} & 0.00633 \\
+\textit{{Total wins or ties}} &  & \textit{0} & \textit{0} & \textit{0} & \textit{2} & \textit{0} & \textit{0} \\
+\bottomrule
+\end{tabular}

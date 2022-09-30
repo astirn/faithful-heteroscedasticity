@@ -15,7 +15,6 @@ BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL (0.5)', 'Beta NL
 OUR_HETEROSCEDASTIC_MODELS = ('Second Order Mean', 'Faithful Heteroscedastic')
 HETEROSCEDASTIC_MODELS = BASELINE_HETEROSCEDASTIC_MODELS + OUR_HETEROSCEDASTIC_MODELS
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
-ARCHITECTURES = ('single', 'separate', 'shared')
 
 
 def drop_unused_index_levels(performance):
@@ -98,7 +97,7 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
         if z_scores is None:
             scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
         else:
-            scores = z_scores[' '.join(index[:2])].numpy().reshape([-1])
+            scores = z_scores[str(dict(zip(measurements.index.names, index)))].reshape([-1])
 
         # ECE
         cdf = stats.norm.cdf(scores)
@@ -179,7 +178,7 @@ def print_tables(df, experiment, non_config_indices=('Model',)):
         configurations = df.index.droplevel(non_config_indices).unique()
     for config in configurations:
         if isinstance(df.index, pd.MultiIndex):
-            df_config = df.loc[(slice(None),) + config, :]
+            df_config = df.loc[(slice(None),) * len(non_config_indices) + config, :]
         else:
             df_config = df.loc[(slice(None),) + config]
         df_config = drop_unused_index_levels(df_config)
@@ -212,29 +211,25 @@ def uci_tables(normalized=True):
     print_tables(df, 'uci')
 
 
-def vae_tables(heteroscedastic_architecture=None, latent_dim=10):
+def vae_tables():
 
     # loop over datasets with measurements
     df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
-        performance_df_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'measurements_df.pkl')
-        performance_dict_file = os.path.join('experiments', 'vae', dataset, str(latent_dim), 'measurements_dict.pkl')
-        if os.path.exists(performance_df_file) and os.path.exists(performance_dict_file):
-            performance_df = pd.read_pickle(performance_df_file).sort_index()
-            if heteroscedastic_architecture is not None:
-                keep = performance_df.index.get_level_values('Architecture').isin(['single', heteroscedastic_architecture])
-                performance_df = performance_df[keep]
-            with open(performance_dict_file, 'rb') as f:
-                performance_dict = pickle.load(f)
+        measurements_df_file = os.path.join('experiments', 'vae', dataset, 'measurements_df.pkl')
+        measurements_dict_file = os.path.join('experiments', 'vae', dataset, 'measurements_dict.pkl')
+        if os.path.exists(measurements_df_file) and os.path.exists(measurements_dict_file):
+            measurements_df = pd.read_pickle(measurements_df_file).sort_index()
+            with open(measurements_dict_file, 'rb') as f:
+                measurements_dict = pickle.load(f)
 
             # analyze performance for each observation type
-            for observations in performance_df.index.unique('Observations'):
-                obs_performance = performance_df[performance_df.index.get_level_values('Observations') == observations]
-                z_scores = performance_dict['Z'][observations]
-                df = pd.concat([df, analyze_performance(obs_performance, dataset, z_scores=z_scores)])
+            for observations in measurements_df.index.unique('Observations'):
+                obs_perf = measurements_df[measurements_df.index.get_level_values('Observations') == observations]
+                df = pd.concat([df, analyze_performance(obs_perf, dataset, z_scores=measurements_dict['Z'])])
 
     # print the tables
-    print_tables(df, 'vae', heteroscedastic_architecture)  # TODO: add latent dim to file name
+    print_tables(df, 'vae', non_config_indices=('Model', 'Observations'))
 
 
 def crispr_tables():

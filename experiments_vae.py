@@ -97,9 +97,9 @@ if __name__ == '__main__':
         'Class labels': valid_labels,
         'Data': {'clean': x_clean_valid, 'corrupt': x_corrupt_valid},
         'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
-        'Mean': {'clean': dict(), 'corrupt': dict()},
-        'Std.':  {'clean': dict(), 'corrupt': dict()},
-        'Z':  {'clean': dict(), 'corrupt': dict()},
+        'Mean': dict(),
+        'Std.': dict(),
+        'Z':  dict(),
     }
 
     # initialize/load optimization history
@@ -169,10 +169,10 @@ if __name__ == '__main__':
             }, index.repeat(py_x.batch_shape))])
 
             # update measurements dictionary
-            measurements_dict['Mean'][observations].update({model_name + ' ' + mag['architecture']: params['mean']})
-            measurements_dict['Std.'][observations].update({model_name + ' ' + mag['architecture']: params['std']})
+            measurements_dict['Mean'].update({index_str: params['mean']})
+            measurements_dict['Std.'].update({index_str: params['std']})
             z_scores = (x_valid - params['mean']) / params['std']
-            measurements_dict['Z'][observations].update({model_name + ' ' + mag['architecture']: z_scores})
+            measurements_dict['Z'].update({index_str: z_scores.numpy()})
 
     # save performance measures and model outputs
     measurements_df.to_pickle(os.path.join(exp_path, 'measurements_df.pkl'))
