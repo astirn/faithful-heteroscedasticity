@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
-import tensorflow as tf
 
 HOMOSCEDASTIC_MODELS = ('Unit Variance',)
 BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL (0.5)', 'Beta NLL (1.0)')
@@ -302,8 +301,8 @@ def vae_plots(examples_per_class=1):
 
     # utility function vae plots
     def concat_examples(output, indices=None):
-        output = output if indices is None else tf.gather(output, indices)
-        return tf.concat(tf.unstack(output), axis=1)
+        output = output if indices is None else output[indices]
+        return np.squeeze(np.concatenate(np.split(output, indices_or_sections=output.shape[0]), axis=2))
 
     # loop over available example images
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
@@ -321,11 +320,11 @@ def vae_plots(examples_per_class=1):
             assert measurements_df.index.nunique() == len(MODELS) * len(observations)
 
             # randomly select some examples of each class to plot
-            tf.keras.utils.set_random_seed(args.seed)
-            i_plot = tf.zeros(shape=0, dtype=tf.int64)
-            for k in tf.sort(tf.unique(measurements_dict['Class labels'])[0]):
-                i_class = tf.where(tf.equal(measurements_dict['Class labels'], k))
-                i_plot = tf.concat([i_plot, tf.random.shuffle(i_class)[:examples_per_class, 0]], axis=0)
+            np.random.seed(args.seed)
+            i_plot = np.zeros(shape=0, dtype=int)
+            for k in np.sort(np.unique(measurements_dict['Class labels'])):
+                i_class = np.where(measurements_dict['Class labels'] == k)[0]
+                i_plot = np.concatenate([i_plot, np.random.choice(i_class, size=examples_per_class)], axis=0)
 
             # prepare performance plot
             fig, ax = plt.subplots(nrows=1 + len(MODELS), ncols=2, figsize=(15, 2 * (1 + len(MODELS))))
@@ -359,46 +358,42 @@ def vae_plots(examples_per_class=1):
             plt.tight_layout()
             fig.savefig(os.path.join('results', '_'.join(['vae', dataset, 'moments.pdf'])))
 
-            # # prepare variance decomposition plot
-            # fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS), figsize=(10, 5))
-            # x = concat_examples(plot_dict['Noise variance']['corrupt']) ** 0.5
-            # ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
-            # ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
-            # ax[0].set_xticks([])
-            # ax[0].set_yticks([])
-            #
-            # # loop over heteroscedastic models
-            # for i, model in enumerate(HETEROSCEDASTIC_MODELS):
-            #
-            #     # find average noise variance per class
-            #     key = model + ' ' + heteroscedastic_architecture
-            #     if (key not in plot_dict['Mean']['clean'].keys()) or (key not in plot_dict['Mean']['corrupt'].keys()):
-            #         continue
-            #     std_clean = plot_dict['Std. deviation']['clean'][key]
-            #     std_corrupt = plot_dict['Std. deviation']['corrupt'][key]
-            #     mean_std_noise = []
-            #     for k in tf.sort(tf.unique(plot_dict['Class labels'])[0]):
-            #         i_class = tf.squeeze(tf.where(tf.equal(plot_dict['Class labels'], k)))
-            #         std_noise = tf.gather(std_corrupt, i_class) - tf.gather(std_clean, i_class)
-            #         std_noise = tf.clip_by_value(std_noise, 0, np.inf)
-            #         mean_std_noise += [tf.reduce_mean(std_noise, axis=0)]
-            #     mean_std_noise = tf.concat(mean_std_noise, axis=1)
-            #
-            #     # plot recovered noise variance
-            #     ax[i + 1].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
-            #     ax[i + 1].set_title(model + ' w/ ' + heteroscedastic_architecture + latent_str)
-            #     ax[i + 1].set_xticks([])
-            #     ax[i + 1].set_yticks([])
-            #
-            # # finalize and save figures
-            # plt.tight_layout()
-            # file_name = 'vae_' + heteroscedastic_architecture + '_' + dataset + '_noise.pdf'
-            # fig.savefig(os.path.join('results', file_name))
+            # prepare variance decomposition plot
+            fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS), figsize=(5, 5))
+            x = concat_examples(measurements_dict['Noise variance']['corrupt']) ** 0.5
+            ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
+            ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
+            ax[0].set_xticks([])
+            ax[0].set_yticks([])
+
+            # plot each model's performance
+            for model in HETEROSCEDASTIC_MODELS:
+                index_clean = measurements_df.loc[([model], ['clean']), :].index.unique()
+                index_corrupt = measurements_df.loc[([model], ['corrupt']), :].index.unique()
+                assert len(index_clean) == len(index_corrupt) == 1, 'only one configuration per model is supported'
+                index_clean = str(dict(zip(measurements_df.index.names, index_clean[0])))
+                index_corrupt = str(dict(zip(measurements_df.index.names, index_corrupt[0])))
+
+                # find average noise variance per class
+                std_clean = measurements_dict['Std.'][index_clean]
+                std_corrupt = measurements_dict['Std.'][index_corrupt]
+                mean_std_noise = []
+                for k in np.sort(np.unique(measurements_dict['Class labels'])):
+                    i_class = np.where(measurements_dict['Class labels'] == k)[0]
+                    std_noise = np.clip(std_corrupt[i_class] - std_clean[i_class], 0, np.inf).mean(axis=0)
+                    mean_std_noise += [std_noise]
+                mean_std_noise = np.concatenate(mean_std_noise, axis=1)
+
+                # plot recovered noise variance
+                row = 1 + HETEROSCEDASTIC_MODELS.index(model)
+                ax[row].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
+                ax[row].set_title(model)
+                ax[row].set_xticks([])
+                ax[row].set_yticks([])
 
             # finalize and save figures
             plt.tight_layout()
-            file_name = 'vae_' + heteroscedastic_architecture + '_' + dataset + '_noise.pdf'
-            fig.savefig(os.path.join('results', file_name))
+            fig.savefig(os.path.join('results', '_'.join(['vae', dataset, 'noise.pdf'])))
 
 
 def crispr_motif_plots(heteroscedastic_architecture='shared'):

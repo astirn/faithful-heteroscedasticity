@@ -94,9 +94,9 @@ if __name__ == '__main__':
     # initialize performance containers
     measurements_df = pd.DataFrame()
     measurements_dict = {
-        'Class labels': valid_labels,
-        'Data': {'clean': x_clean_valid, 'corrupt': x_corrupt_valid},
-        'Noise variance': {'clean': tf.zeros_like(noise_std), 'corrupt': noise_std ** 2},
+        'Class labels': valid_labels.numpy(),
+        'Data': {'clean': x_clean_valid.numpy(), 'corrupt': x_corrupt_valid.numpy()},
+        'Noise variance': {'clean': tf.zeros_like(noise_std).numpy(), 'corrupt': noise_std.numpy() ** 2},
         'Mean': dict(),
         'Std.': dict(),
         'Z':  dict(),
