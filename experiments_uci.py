@@ -57,7 +57,7 @@ for trial in range(1, args.num_trials + 1):
         fold_path = os.path.join(trial_path, 'fold_' + str(fold))
 
         # a deterministic but seemingly random transformation of the trial seed into a fold seed
-        fold_seed = int(zlib.crc32(str(trial * trial_seed).encode())) % (2 ** 32 - 1)
+        fold_seed = int(zlib.crc32(str(fold * trial_seed).encode())) % (2 ** 32 - 1)
 
         # data pipeline
         i_train = data['split'] != fold
