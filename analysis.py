@@ -26,7 +26,7 @@ def drop_unused_index_levels(performance):
     return performance
 
 
-def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha=0.1, test=stats.ttest_rel):
+def find_best_model(candidates, df, measurements, max_or_min, test_values, alpha, test=stats.ttest_rel):
 
     # find the best of the candidates
     if max_or_min == 'max':
@@ -520,8 +520,7 @@ if __name__ == '__main__':
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
-        # crispr_motif_plots(heteroscedastic_architecture='separate')
-        # crispr_motif_plots(heteroscedastic_architecture='shared')
+        # crispr_motif_plots()
 
     # show plots
     plt.show()
