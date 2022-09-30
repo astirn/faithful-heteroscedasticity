@@ -28,13 +28,6 @@ def f_conv_net(d_in, **kwargs):
         tf.keras.layers.Flatten()])
 
 
-# full LeNet
-def f_le_net(d_in, **kwargs):
-    m = f_conv_net(d_in)
-    m.add(f_neural_net(d_in=m.output_shape[1], **kwargs))
-    return m
-
-
 if __name__ == '__main__':
 
     # script arguments
@@ -86,12 +79,12 @@ if __name__ == '__main__':
 
     # loop over validation folds and observations
     measurements = pd.DataFrame()
-    for k, observations in itertools.product(range(1, args.num_folds + 1), ['means', 'replicates']):
-        fold_path = os.path.join(exp_path, 'fold_' + str(k))
-        i_train, i_valid = tf.not_equal(folds, k), tf.equal(folds, k)
+    for fold, observations in itertools.product(range(1, args.num_folds + 1), ['means', 'replicates']):
+        fold_path = os.path.join(exp_path, 'fold_' + str(fold))
+        i_train, i_valid = tf.not_equal(folds, fold), tf.equal(folds, fold)
 
         # a deterministic but seemingly random transformation of the experiment seed into a fold seed
-        fold_seed = int(zlib.crc32(str(k * args.seed).encode())) % (2 ** 32 - 1)
+        fold_seed = int(zlib.crc32(str(fold * args.seed).encode())) % (2 ** 32 - 1)
 
         # prepare training/validation data according to observation type
         tf.keras.utils.set_random_seed(fold_seed)
@@ -115,14 +108,14 @@ if __name__ == '__main__':
         for mag in models_and_configurations:
 
             # model configuration (seed and GPU determinism ensures architectures are identically initialized)
-            tf.keras.utils.set_random_seed(args.seed)
+            tf.keras.utils.set_random_seed(fold_seed)
             model = mag['model'](dim_x=x.shape[1:], dim_y=1, **mag['model_kwargs'], **mag['nn_kwargs'])
             model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
             index, index_str = model_config_index(model_name, {**{'Observations': observations}, **mag['nn_kwargs']})
-            print('***** Fold {:d}/{:d}: {:s} *****'.format(k, args.num_folds, index_str))
+            print('***** Fold {:d}/{:d}: {:s} *****'.format(fold, args.num_folds, index_str))
 
             # determine where to save model
             save_path = os.path.join(fold_path, observations)
@@ -155,7 +148,7 @@ if __name__ == '__main__':
                 optimization_history.to_pickle(opti_history_file)
 
             # generate predictions on the validation set
-            tf.keras.utils.set_random_seed(args.seed)
+            tf.keras.utils.set_random_seed(fold_seed)
             params = model.predict(x=x_valid, verbose=0)
 
             # save performance measurements
@@ -176,7 +169,7 @@ if __name__ == '__main__':
 
             # compute SHAP values if we don't have them
             if not index.isin(mean_output.index) or not index.isin(shap.index):
-                tf.keras.utils.set_random_seed(args.seed)
+                tf.keras.utils.set_random_seed(fold_seed)
                 num_background_samples = min(args.max_background, x[i_train].shape[0])
                 e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:num_background_samples].numpy())
                 mean_output_dict = dict(mean=e.expected_value[0].numpy(), std=e.expected_value[1].numpy())
