@@ -451,7 +451,7 @@ def crispr_motif_plots():
                             mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
                             shap_values = np.array(df_shap.loc[(model, observation), moment].to_list())
                             shap[observation][nt] = (mask * shap_values).sum(0) / mask.sum(0)
-                            # shap[observation][nt] += df_mean_output.loc[(model, observation), 'std']
+                            # shap[observation][nt] += df_mean_output.loc[(model, observation), moment]
                         logomaker.Logo(shap[observation], flip_below=False, ax=ax[row, observations.index(observation)])
 
                     # SHAP noise variance = SHAP trained on replicates - SHAP trained on means
