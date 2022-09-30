@@ -396,33 +396,38 @@ def vae_plots(examples_per_class=1):
             fig.savefig(os.path.join('results', '_'.join(['vae', dataset, 'noise.pdf'])))
 
 
-def crispr_motif_plots(heteroscedastic_architecture='shared'):
+def crispr_motif_plots():
 
     def sequence_mask(df):
         return np.array(df.apply(lambda seq: [s == nt for s in seq]).to_list())
 
+    def set_y_limits(axes):
+        limits = (min([min(a.get_ylim()) for a in axes.flatten()]), max([max(a.get_ylim()) for a in axes.flatten()]))
+        for axis in axes.flatten():
+            axis.set_ylim(limits)
+
     # loop over datasets with SHAP values
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
         shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
-        if os.path.exists(shap_file):
-            df_shap = pd.read_pickle(shap_file)
-            df_shap.index = df_shap.index.droplevel('Fold')
-            df_shap = pd.concat([
-                df_shap.loc[(slice(None), ['single'], slice(None)), :],
-                df_shap.loc[(slice(None), [heteroscedastic_architecture], slice(None)), :],
-            ])
-            df_shap.index = df_shap.index.droplevel('Architecture')
-            df_shap.sort_index(inplace=True)
+        mean_output_file = os.path.join('experiments', 'crispr', dataset, 'mean_output.pkl')
+        if os.path.exists(shap_file) and os.path.exists(shap_file):
+            df_shap = drop_unused_index_levels(pd.read_pickle(shap_file).sort_index())
+            df_mean_output = drop_unused_index_levels(pd.read_pickle(mean_output_file).sort_index())
+            assert df_shap.index.names == ['Model', 'Observations']
+            assert df_mean_output.index.names == ['Model', 'Observations']
             df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
 
-            # models and observation order
-            models = ['Unit Variance', 'Heteroscedastic', 'Faithful Heteroscedastic']
+            # make sure we support what was provided
+            assert set(df_shap.index.unique('Model')) == set(MODELS)
+            assert set(df_mean_output.index.unique('Model')) == set(MODELS)
             observations = ['means', 'replicates']
-            if not len(df_shap.index.unique()) == len(models) * len(observations):
-                continue
+            assert set(df_shap.index.unique('Observations')) == set(observations)
+            assert set(df_mean_output.index.unique('Observations')) == set(observations)
+            assert df_shap.index.nunique() == len(MODELS) * len(observations)
+            assert df_mean_output.index.nunique() == len(MODELS) * len(observations)
 
             # SHAP of the mean figure
-            fig, ax = plt.subplots(nrows=len(models), ncols=len(observations), figsize=(15, 10))
+            fig, ax = plt.subplots(nrows=len(MODELS), ncols=len(observations), figsize=(15, 10))
             fig.suptitle(dataset.capitalize())
             ax[0, 0].set_title('SHAP of the mean when trained on means')
             ax[0, 1].set_title('SHAP of the mean when trained on replicates')
@@ -432,65 +437,44 @@ def crispr_motif_plots(heteroscedastic_architecture='shared'):
                     mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
                     shap_values = np.array(df_shap.loc[(model, observation), 'mean'].to_list())
                     shap[nt] = (mask * shap_values).sum(0) / mask.sum(0)
-                ax_index = (models.index(model), observations.index(observation))
+                ax_index = (MODELS.index(model), observations.index(observation))
                 logomaker.Logo(shap, flip_below=False, ax=ax[ax_index])
                 ax[ax_index[0], 0].set_ylabel(model)
-            y_limit = ax[0, 0].get_ylim()
-            for ax in ax.flatten():
-                ax.set_ylim(y_limit)
+
+            # finalize and save
+            set_y_limits(ax)
             plt.tight_layout()
-            file_name = 'crispr_shap_' + dataset + '_mean_' + heteroscedastic_architecture + '.pdf'
-            fig.savefig(os.path.join('results', file_name))
+            fig.savefig(os.path.join('results', 'crispr_shap_' + dataset + '_mean.pdf'))
 
             # SHAP of the standard deviation figure
-            models.pop(0)
-            fig, ax = plt.subplots(nrows=3, ncols=2, figsize=(15, 10))
+            fig, ax = plt.subplots(nrows=len(HETEROSCEDASTIC_MODELS), ncols=len(observations) + 1, figsize=(15, 10))
             fig.suptitle(dataset.capitalize())
-            ax[0, 0].set_title(models[0])
-            ax[0, 1].set_title(models[1])
-            for col, model in enumerate(models):
+            ax[0, 0].set_title('SHAP of the std when trained on means')
+            ax[0, 1].set_title('SHAP of the std when trained on replicates')
+            ax[0, 2].set_title('SHAP of the $\\sqrt{\\mathrm{noise \\ variance}}$')
+            for row, model in enumerate(HETEROSCEDASTIC_MODELS):
+                ax[row, 0].set_ylabel(model)
+
+                # SHAP values when trained on means and replicates
                 shap = dict(means=pd.DataFrame(), replicates=pd.DataFrame())
                 for observation in observations:
                     for nt in ['A', 'C', 'G', 'T']:
                         mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
                         shap_values = np.array(df_shap.loc[(model, observation), 'std'].to_list())
                         shap[observation][nt] = (mask * shap_values).sum(0) / mask.sum(0)
-                    ax_index = (observations.index(observation), col)
-                    logomaker.Logo(shap[observation], flip_below=False, ax=ax[ax_index])
-                    ax[ax_index[0], 0].set_ylabel('SHAP of the std. dev.\nwhen trained on ' + observation)
+                        # shap[observation][nt] += df_mean_output.loc[(model, observation), 'std']
+                    logomaker.Logo(shap[observation], flip_below=False, ax=ax[row, observations.index(observation)])
+
+                # SHAP noise variance = SHAP trained on replicates - SHAP trained on means
                 shap_delta = pd.DataFrame()
                 for nt in ['A', 'C', 'G', 'T']:
                     shap_delta[nt] = shap['replicates'][nt] - shap['means'][nt]
-                logomaker.Logo(shap_delta, flip_below=False, ax=ax[2, col])
-                ax[2, col].set_ylabel('SHAP of the $\\sqrt{\\mathrm{noise \\ variance}}$')
-            for col in range(2):
-                limit = max([max(abs(np.array(a.get_ylim()))) for a in ax[:, col]])
-                for row in range(3):
-                    ax[row, col].set_ylim([-limit, limit])
-            plt.tight_layout()
-            file_name = 'crispr_shap_' + dataset + '_std_' + heteroscedastic_architecture + '.pdf'
-            fig.savefig(os.path.join('results', file_name))
+                logomaker.Logo(shap_delta, flip_below=False, ax=ax[row, 2])
 
-            # # plot learned motifs for each model
-            # for model in df_shap.index.unique():
-            #     fig, ax = plt.subplots(nrows=2, figsize=(15, 5))
-            #     fig.suptitle(model + ' : ' + dataset)
-            #     mean_shap = pd.DataFrame()
-            #     std_shap = pd.DataFrame()
-            #     for nt in ['A', 'C', 'G', 'T']:
-            #         mask = np.array(df_shap.loc[model, 'sequence'].apply(lambda seq: [s == nt for s in seq]).to_list())
-            #         mean_shap[nt] = (mask * np.array(df_shap.loc[model, 'mean'].to_list())).sum(0) / mask.sum(0)
-            #         std_shap[nt] = (mask * np.array(df_shap.loc[model, 'std'].to_list())).sum(0) / mask.sum(0)
-            #     logomaker.Logo(mean_shap, flip_below=False, ax=ax[0])
-            #     logomaker.Logo(std_shap, flip_below=False, ax=ax[1])
-            #     ax[0].set_ylabel('SHAP of the Mean')
-            #     ax[1].set_ylabel('SHAP of the Std. Dev.')
-            #     limit = max(abs(np.array(list(ax[0].get_ylim()) + list(ax[1].get_ylim()))))
-            #     ax[1].set_ylim([-limit, limit])
-            #     ax[1].set_ylim([-limit, limit])
-            #     plt.tight_layout()
-            #     file_name = 'crispr_shap_' + dataset + '_' + model.lower().replace(' ', '-') + '.pdf'
-            #     fig.savefig(os.path.join('results', file_name))
+            # finalize and save
+            set_y_limits(ax)
+            plt.tight_layout()
+            fig.savefig(os.path.join('results', 'crispr_shap_' + dataset + '_std.pdf'))
 
 
 if __name__ == '__main__':
@@ -520,7 +504,7 @@ if __name__ == '__main__':
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
         crispr_tables()
-        # crispr_motif_plots()
+        crispr_motif_plots()
 
     # show plots
     plt.show()
