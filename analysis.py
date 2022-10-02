@@ -86,8 +86,6 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
     qq_wse = pd.DataFrame()
     quantiles = np.linspace(0.025, 0.975, num=96)
     normal_quantiles = stats.norm.ppf(q=quantiles)
-    weights = stats.norm.pdf(stats.norm.ppf(q=quantiles))
-    weights /= np.sum(weights)
     for index in measurements.index.unique():
         if not isinstance(index, tuple):
             index = (index,)
