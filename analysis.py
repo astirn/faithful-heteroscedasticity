@@ -111,7 +111,7 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
 
         # QQ weighted squared quantile errors
         scores_quantiles = np.quantile(scores, q=quantiles)
-        wse = weights * (scores_quantiles - normal_quantiles) ** 2
+        wse = (scores_quantiles - normal_quantiles) ** 2
         index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(wse))
         qq_wse = pd.concat([qq_wse, pd.DataFrame({'QQ WSE': wse}, index=index)])
 
