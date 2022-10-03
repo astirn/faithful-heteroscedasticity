@@ -39,9 +39,7 @@ def find_best_model(candidates, df, measurements, max_or_min, alpha, test):
     # identify all models that are statistically indistinguishable from the best
     best_models = candidates.to_list()
     for index in candidates:
-        values = measurements.loc[index]
-        null_values = measurements.loc[i_best]
-        if test(null_values, values) < alpha:
+        if test(measurements.loc[i_best], measurements.loc[index]) < alpha:
             best_models.remove(index)
 
     return best_models
@@ -133,7 +131,6 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, ece_met
     ll = measurements['log p(y|x)'].groupby(level=measurements.index.names).mean()
     best_ll_models = find_best_model(candidates, ll, measurements['log p(y|x)'], 'max', alpha,
                                      lambda best, alt: stats.ks_2samp(best, alt, alternative='greater')[1])
-                                     # test=lambda x, y: (None, stats.cramervonmises_2samp(x, y).pvalue))
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     df = df.join(ll)
 
