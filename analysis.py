@@ -81,9 +81,9 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, z_score
     df = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
 
     # ECE and QQ weighted squared quantile errors
-    ece = pd.Series(index=measurements.index.unique(), dtype=float)
+    ece_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
     bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-    qq_wse = pd.DataFrame()
+    qq_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
     quantiles = np.linspace(0.025, 0.975, num=96)
     normal_quantiles = stats.norm.ppf(q=quantiles)
     for index in measurements.index.unique():
@@ -96,25 +96,29 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, z_score
         else:
             scores = z_scores[str(dict(zip(measurements.index.names, index)))].reshape([-1])
 
+        # index for logging calibration values
+        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names)
+
         # ECE
         cdf = stats.norm.cdf(scores)
         p_hat = np.histogram(cdf, bin_probs)[0] / len(cdf)
-        ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
+        sqe = (1 / ece_bins - np.array(p_hat)) ** 2
+        ece_values = pd.concat([ece_values, pd.Series(sqe, index=index.repeat(len(sqe)))])
 
         # QQ weighted squared quantile errors
         scores_quantiles = np.quantile(scores, q=quantiles)
-        wse = (scores_quantiles - normal_quantiles) ** 2
-        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names).repeat(len(wse))
-        qq_wse = pd.concat([qq_wse, pd.DataFrame({'QQ WSE': wse}, index=index)])
+        sqe = (scores_quantiles - normal_quantiles) ** 2
+        qq_values = pd.concat([qq_values, pd.Series(sqe, index=index.repeat(len(sqe)))])
 
     # finalize ECE table
+    ece = ece_values.groupby(level=measurements.index.names).sum()
     best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
     ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
     df = df.join(ece)
 
     # finalize QQ RMSE table
-    qq = qq_wse['QQ WSE'].groupby(level=measurements.index.names).mean() ** 0.5
-    best_qq_models = find_best_model(candidates, qq, qq_wse['QQ WSE'], 'min', alpha)
+    qq = qq_values.groupby(level=measurements.index.names).mean() ** 0.5
+    best_qq_models = find_best_model(candidates, qq, qq_values, 'min', alpha)
     qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ')
     df = df.join(qq)
 
