@@ -26,15 +26,13 @@ def drop_unused_index_levels(performance):
     return performance
 
 
-def find_best_model(candidates, df, measurements, max_or_min, alpha, test=stats.ttest_rel):
+def find_best_model(candidates, df, measurements, max_or_min, alpha, test):
 
     # find the best of the candidates
     if max_or_min == 'max':
         i_best = df[df.index.isin(candidates)].idxmax()
-        alternative = 'greater'
     elif max_or_min == 'min':
         i_best = df[df.index.isin(candidates)].idxmin()
-        alternative = 'less'
     else:
         raise NotImplementedError
 
@@ -43,7 +41,7 @@ def find_best_model(candidates, df, measurements, max_or_min, alpha, test=stats.
     for index in candidates:
         values = measurements.loc[index]
         null_values = measurements.loc[i_best]
-        if test(null_values, values, alternative=alternative)[1] < alpha:
+        if test(null_values, values) < alpha:
             best_models.remove(index)
 
     return best_models
@@ -77,7 +75,8 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, ece_met
     candidates = candidates.index.unique()
 
     # finalize RMSE table
-    best_rmse_models = find_best_model(candidates, rmse, measurements['squared errors'], 'min', alpha)
+    best_rmse_models = find_best_model(candidates, rmse, measurements['squared errors'], 'min', alpha,
+                                       lambda best, alt: stats.ttest_rel(best, alt, alternative='less')[1])
     df = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
 
     # ECE and QQ weighted squared quantile errors
@@ -125,13 +124,16 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, ece_met
 
     # finalize QQ RMSE table
     qq = qq_values.groupby(level=measurements.index.names).mean() ** 0.5
-    best_qq_models = find_best_model(candidates, qq, qq_values, 'min', alpha)
+    best_qq_models = find_best_model(candidates, qq, qq_values, 'min', alpha,
+                                     lambda best, alt: stats.ttest_rel(best, alt, alternative='less')[1])
     qq = format_table_entries(qq, best_qq_models, unfaithful_models).to_frame('QQ')
     df = df.join(qq)
 
     # log likelihoods
     ll = measurements['log p(y|x)'].groupby(level=measurements.index.names).mean()
-    best_ll_models = find_best_model(candidates, ll, measurements['log p(y|x)'], 'max', alpha, test=stats.ks_2samp)
+    best_ll_models = find_best_model(candidates, ll, measurements['log p(y|x)'], 'max', alpha,
+                                     lambda best, alt: stats.ks_2samp(best, alt, alternative='greater')[1])
+                                     # test=lambda x, y: (None, stats.cramervonmises_2samp(x, y).pvalue))
     ll = format_table_entries(ll, best_ll_models, unfaithful_models).to_frame('LL')
     df = df.join(ll)
 
