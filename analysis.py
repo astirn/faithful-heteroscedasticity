@@ -59,7 +59,7 @@ def format_table_entries(series, best_models, unfaithful_models):
     return series
 
 
-def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_method='two-sided', z_scores=None):
+def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, z_scores=None):
 
     # RMSE
     rmse = measurements['squared errors'].groupby(level=measurements.index.names).mean() ** 0.5
@@ -98,14 +98,8 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=5, ece_metho
 
         # ECE
         cdf = stats.norm.cdf(scores)
-        if ece_method == 'one-sided':
-            p_hat = [sum(cdf <= bin_probs[i]) / len(cdf) for i in range(len(bin_probs))]
-            ece.loc[index] = np.sum((bin_probs - p_hat) ** 2)
-        elif ece_method == 'two-sided':
-            p_hat = np.histogram(cdf, bin_probs)[0] / len(cdf)
-            ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
-        else:
-            raise NotImplementedError
+        p_hat = np.histogram(cdf, bin_probs)[0] / len(cdf)
+        ece.loc[index] = np.sum((1 / ece_bins - np.array(p_hat)) ** 2)
 
         # QQ weighted squared quantile errors
         scores_quantiles = np.quantile(scores, q=quantiles)
