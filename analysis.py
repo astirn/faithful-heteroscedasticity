@@ -55,7 +55,7 @@ def format_table_entries(series, best_models, unfaithful_models):
     return series
 
 
-def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, ece_method='two-sided', z_scores=None):
+def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=50, ece_method='two-sided', z_scores=None):
 
     # RMSE
     rmse = measurements['squared errors'].groupby(level=measurements.index.names).mean() ** 0.5
