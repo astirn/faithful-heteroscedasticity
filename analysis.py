@@ -55,7 +55,7 @@ def format_table_entries(series, best_models, unfaithful_models):
     return series
 
 
-def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=50, ece_method='two-sided', z_scores=None):
+def analyze_performance(measurements, dataset, alpha=0.05, ece_method='two-sided', z_scores=None):
 
     # RMSE
     rmse = measurements['squared errors'].groupby(level=measurements.index.names).mean() ** 0.5
@@ -78,6 +78,8 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=50, ece_meth
     df = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
 
     # ECE and QQ weighted squared quantile errors
+    ece_bins = num_ece_bins(measurements, z_scores)
+    print(dataset, ece_bins)
     histograms = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=object)
     ece_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
     bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
@@ -99,10 +101,11 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=50, ece_meth
 
         # ECE
         histogram = np.histogram(stats.norm.cdf(scores), bin_probs)[0]
+        p_hat = histogram / len(scores)
         if ece_method == 'one-sided':
-            calibration_error = (bin_probs[1:] - np.cumsum(histogram) / len(scores)) ** 2
+            calibration_error = (bin_probs[1:] - np.cumsum(p_hat)) ** 2
         elif ece_method == 'two-sided':
-            calibration_error = (1 / ece_bins - histogram / len(scores)) ** 2
+            calibration_error = (1 / ece_bins - p_hat) ** 2
         else:
             raise NotImplementedError
         histograms = pd.concat([histograms, pd.Series(histogram, index=index.repeat(len(histogram)))])
