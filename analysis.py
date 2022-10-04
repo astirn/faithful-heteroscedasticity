@@ -101,7 +101,6 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, ece_met
         histogram = np.histogram(stats.norm.cdf(scores), bin_probs)[0]
         if ece_method == 'one-sided':
             calibration_error = (bin_probs[1:] - np.cumsum(histogram) / len(scores)) ** 2
-            warnings.warn('incorrect statistical test')
         elif ece_method == 'two-sided':
             calibration_error = (1 / ece_bins - histogram / len(scores)) ** 2
         else:
@@ -116,7 +115,8 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_bins=100, ece_met
 
     # finalize ECE table
     ece = ece_values.groupby(level=measurements.index.names).sum()
-    best_ece_models = [ece[ece.index.isin(candidates)].idxmin()]
+    best_ece_models = find_best_model(candidates, ece, histograms, 'min', alpha,
+                                      test=lambda x, y: stats.power_divergence(x, y, lambda_='log-likelihood')[1])
     ece = format_table_entries(ece, best_ece_models, unfaithful_models).to_frame('ECE')
     df = df.join(ece)
 
