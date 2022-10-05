@@ -424,6 +424,7 @@ def crispr_motif_plots():
         if os.path.exists(shap_file) and os.path.exists(shap_file):
             df_shap = drop_unused_index_levels(pd.read_pickle(shap_file).sort_index())
             df_mean_output = drop_unused_index_levels(pd.read_pickle(mean_output_file).sort_index())
+            df_mean_output = df_mean_output.groupby(['Model', 'Observations']).mean()
             assert df_shap.index.names == ['Model', 'Observations']
             assert df_mean_output.index.names == ['Model', 'Observations']
             df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
