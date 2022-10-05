@@ -367,7 +367,7 @@ def vae_plots(examples_per_class=1):
 
             # finalize and save figures
             plt.tight_layout()
-            fig.savefig(os.path.join('results', '_'.join(['vae', dataset, 'moments.pdf'])))
+            fig.savefig(os.path.join('results', '_'.join(['vae', 'moments', dataset])) + '.pdf')
 
             # prepare variance decomposition plot
             fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS), figsize=(5, 5))
@@ -404,7 +404,7 @@ def vae_plots(examples_per_class=1):
 
             # finalize and save figures
             plt.tight_layout()
-            fig.savefig(os.path.join('results', '_'.join(['vae', dataset, 'noise.pdf'])))
+            fig.savefig(os.path.join('results', '_'.join(['vae', 'noise', dataset])) + '.pdf')
 
 
 def crispr_motif_plots():
