@@ -14,6 +14,7 @@ BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL (0.5)', 'Beta NL
 OUR_HETEROSCEDASTIC_MODELS = ('Second Order Mean', 'Faithful Heteroscedastic')
 HETEROSCEDASTIC_MODELS = BASELINE_HETEROSCEDASTIC_MODELS + OUR_HETEROSCEDASTIC_MODELS
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
+COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 
 
 def drop_unused_index_levels(performance):
