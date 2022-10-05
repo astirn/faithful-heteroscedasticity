@@ -17,33 +17,29 @@ from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
 
 
-def f_trunk(d_in, **kwargs):
-    return tf.keras.Sequential(layers=[
-        tf.keras.layers.InputLayer(d_in),
-        tf.keras.layers.Conv2D(16, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(16, 5, strides=2, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(32, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='relu'),
-    ])
-
-
-def f_param(d_in, d_out, dim_z, f_out, **kwargs):
+def f_trunk(d_in, dim_z, **kwargs):
     prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
     # weight = 0.5 is a workaround for: https://github.com/tensorflow/probability/issues/1215
     dkl = tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True, weight=0.5)
-    m = tf.keras.Sequential(layers=[
+    return tf.keras.Sequential(layers=[
         tf.keras.layers.InputLayer(d_in),
-        tf.keras.layers.Conv2D(64, 7, strides=1, padding='valid', activation='relu'),
+        tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='elu'),
+        tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='elu'),
         tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(128, activation='elu'),
         tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
         tfpl.IndependentNormal(dim_z, activity_regularizer=dkl),
-        tf.keras.layers.Reshape([1, 1, dim_z]),
-        tf.keras.layers.Conv2DTranspose(64, 7, strides=1, padding='valid', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(32, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(32, 5, strides=2, padding='same', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(16, 5, strides=1, padding='same', activation='relu'),
-        tf.keras.layers.Conv2DTranspose(16, 5, strides=2, padding='same', activation='relu'),
-        tf.keras.layers.Conv2D(1, 5, strides=1, padding='same', activation=f_out),
+    ])
+
+
+def f_param(d_in, d_out, f_out, **kwargs):
+    m = tf.keras.Sequential(layers=[
+        tf.keras.layers.InputLayer(d_in),
+        tf.keras.layers.Dense(128, activation='elu'),
+        tf.keras.layers.Dense(1568, activation='elu'),
+        tf.keras.layers.Reshape([7, 7, 32]),
+        tf.keras.layers.Conv2DTranspose(32, 5, strides=2, padding='same', activation='elu'),
+        tf.keras.layers.Conv2DTranspose(1, 5, strides=2, padding='same', activation=f_out),
     ])
     assert m.output_shape[1:] == d_out
     return m
@@ -56,11 +52,11 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
     parser.add_argument('--dataset', type=str, default='mnist', help='which dataset to use')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--dim_z', type=int, default=10, help='number of latent dimensions')
-    parser.add_argument('--epochs', type=int, default=1000, help='number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=5e-5, help='learning rate')
+    parser.add_argument('--dim_z', type=int, default=16, help='number of latent dimensions')
+    parser.add_argument('--epochs', type=int, default=2000, help='number of training epochs')
+    parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
-    parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
+    parser.add_argument('--seed', type=int, default=123456789, help='random number seed for reproducibility')
     args = parser.parse_args()
 
     # make experimental directory base path
@@ -81,7 +77,7 @@ if __name__ == '__main__':
     # create heteroscedastic noise variance templates
     noise = (tf.ones_like(x_clean_train[0]) / 255).numpy()
     x, y = dim_x[0] // 2, dim_x[1] // 2
-    noise[x - 2: x + 3, y: 2 * y + 1] = 0.25
+    noise[x - 2: x + 3, y: 2 * y + 1] = 0.25 * (tf.reduce_max(x_clean_train) - tf.reduce_min(x_clean_train))
     k = tf.unique(train_labels)[0].shape[0]
     noise_std = [tfa.image.rotate(noise, 2 * 3.14 / k * (y + 1), interpolation='bilinear') for y in range(k)]
     noise_std = tf.stack(noise_std, axis=0)
