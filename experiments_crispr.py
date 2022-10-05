@@ -168,19 +168,21 @@ if __name__ == '__main__':
                     assert max_abs_error == 0.0, 'bad SHAPy cat!'
 
             # compute SHAP values if we don't have them
-            if not index.isin(mean_output.index) or not index.isin(shap.index):
+            shap_index = pd.MultiIndex.from_tuples([index.values[0] + (fold,)], names=index.names + ['Fold'])
+            if not shap_index.isin(mean_output.index) or not index.isin(shap.index):  # TODO: use SHAP index for SHAP
                 tf.keras.utils.set_random_seed(fold_seed)
                 num_background_samples = min(args.max_background, x[i_train].shape[0])
                 e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:num_background_samples].numpy())
                 mean_output_dict = dict(mean=e.expected_value[0].numpy(), std=e.expected_value[1].numpy())
-                mean_output = pd.concat([mean_output, pd.DataFrame(mean_output_dict, index)])
+                mean_output = pd.concat([mean_output, pd.DataFrame(mean_output_dict, shap_index)])
                 mean_output.to_pickle(mean_output_file)
-                shap_values = e.shap_values(x[i_valid].numpy())
-                shap_dict = dict(sequence=sequence[i_valid].numpy().tolist(),
-                                 mean=shap_values[0].sum(-1).tolist(),
-                                 std=shap_values[1].sum(-1).tolist())
-                shap = pd.concat([shap, pd.DataFrame(shap_dict, index.repeat(x[i_valid].shape[0]))])
-                shap.to_pickle(shap_file)
+                if not index.isin(shap.index):
+                    shap_values = e.shap_values(x[i_valid].numpy())
+                    shap_dict = dict(sequence=sequence[i_valid].numpy().tolist(),
+                                     mean=shap_values[0].sum(-1).tolist(),
+                                     std=shap_values[1].sum(-1).tolist())
+                    shap = pd.concat([shap, pd.DataFrame(shap_dict, index.repeat(x[i_valid].shape[0]))])
+                    shap.to_pickle(shap_file)
 
             # clear out memory and enable GPU determinism incase clearing undoes this setting
             tf.keras.backend.clear_session()
