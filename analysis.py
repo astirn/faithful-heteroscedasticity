@@ -344,7 +344,7 @@ def vae_plots(examples_per_class=1):
             # plot data
             for col, observation in enumerate(observations):
                 x = concat_examples(measurements_dict['Data'][observation], i_plot)
-                ax[0, col].imshow(x, cmap='gray_r', vmin=-0.5, vmax=0.5)
+                ax[0, col].imshow(x, cmap='gray_r', vmin=-5, vmax=5)
                 ax[0, col].set_title(observation.capitalize() + ' Data')
                 ax[0, col].set_xticks([])
                 ax[0, col].set_yticks([])
@@ -355,12 +355,12 @@ def vae_plots(examples_per_class=1):
 
                 # gather moments
                 mean = concat_examples(measurements_dict['Mean'][str(index_dict)], i_plot)
-                std = concat_examples(measurements_dict['Std.'][str(index_dict)], i_plot) - 0.5
+                std = concat_examples(measurements_dict['Std.'][str(index_dict)], i_plot) - 5
 
                 # plot moments
                 row = 1 + MODELS.index(index_dict['Model'])
                 col = observations.index(index_dict['Observations'])
-                ax[row, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-0.5, vmax=0.5)
+                ax[row, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-5, vmax=5)
                 ax[row, col].set_title(index_dict['Model'])
                 ax[row, col].set_xticks([])
                 ax[row, col].set_yticks([mean.shape[0] // 2, 3 * mean.shape[0] // 2], ['Mean', 'Std.'])
@@ -372,7 +372,7 @@ def vae_plots(examples_per_class=1):
             # prepare variance decomposition plot
             fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS), figsize=(5, 5))
             x = concat_examples(measurements_dict['Noise variance']['corrupt']) ** 0.5
-            ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=1.0)
+            ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=5)
             ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
             ax[0].set_xticks([])
             ax[0].set_yticks([])
@@ -397,7 +397,7 @@ def vae_plots(examples_per_class=1):
 
                 # plot recovered noise variance
                 row = 1 + HETEROSCEDASTIC_MODELS.index(model)
-                ax[row].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=1.0)
+                ax[row].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=5)
                 ax[row].set_title(model)
                 ax[row].set_xticks([])
                 ax[row].set_yticks([])
