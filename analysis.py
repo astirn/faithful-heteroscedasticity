@@ -77,44 +77,49 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_method='two-sided
                                        lambda best, alt: stats.ttest_rel(best, alt, alternative='less')[1])
     df = format_table_entries(rmse, best_rmse_models, unfaithful_models).to_frame('RMSE')
 
-    # ECE and QQ weighted squared quantile errors
-    ece_bins = num_ece_bins(measurements, z_scores)
-    print(dataset, ece_bins)
-    histograms = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=object)
-    ece_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
-    bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
-    qq_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
-    quantiles = np.linspace(0.025, 0.975, num=96)
-    normal_quantiles = stats.norm.ppf(q=quantiles)
-    for index in measurements.index.unique():
-        if not isinstance(index, tuple):
-            index = (index,)
+    # loop over descending ECE bin sizes until we satisfy G-test requirements
+    for ece_bins in list(range(1000, 100, -250)) + list(range(100, 10, -10)) + list(range(10, 2, -1)):
 
-        # grab scores (and flatten for multidimensional  targets)
-        if z_scores is None:
-            scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
-        else:
-            scores = z_scores[str(dict(zip(measurements.index.names, index)))].reshape([-1])
+        # ECE and QQ weighted squared quantile errors
+        histograms = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=object)
+        ece_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
+        bin_probs = np.stack([x / ece_bins for x in range(ece_bins + 1)])
+        qq_values = pd.Series(index=pd.MultiIndex.from_tuples([], names=measurements.index.names), dtype=float)
+        quantiles = np.linspace(0.025, 0.975, num=96)
+        normal_quantiles = stats.norm.ppf(q=quantiles)
+        for index in measurements.index.unique():
+            if not isinstance(index, tuple):
+                index = (index,)
 
-        # index for logging calibration values
-        index = pd.MultiIndex.from_tuples([index], names=measurements.index.names)
+            # grab scores (and flatten for multidimensional  targets)
+            if z_scores is None:
+                scores = np.array(measurements.loc[index, 'z'].to_list()).reshape([-1])
+            else:
+                scores = z_scores[str(dict(zip(measurements.index.names, index)))].reshape([-1])
 
-        # ECE
-        histogram = np.histogram(stats.norm.cdf(scores), bin_probs)[0]
-        p_hat = histogram / len(scores)
-        if ece_method == 'one-sided':
-            calibration_error = (bin_probs[1:] - np.cumsum(p_hat)) ** 2
-        elif ece_method == 'two-sided':
-            calibration_error = (1 / ece_bins - p_hat) ** 2
-        else:
-            raise NotImplementedError
-        histograms = pd.concat([histograms, pd.Series(histogram, index=index.repeat(len(histogram)))])
-        ece_values = pd.concat([ece_values, pd.Series(calibration_error, index=index.repeat(len(calibration_error)))])
+            # index for logging calibration values
+            index = pd.MultiIndex.from_tuples([index], names=measurements.index.names)
 
-        # QQ weighted squared quantile errors
-        scores_quantiles = np.quantile(scores, q=quantiles)
-        sqe = (scores_quantiles - normal_quantiles) ** 2
-        qq_values = pd.concat([qq_values, pd.Series(sqe, index=index.repeat(len(sqe)))])
+            # ECE
+            histogram = np.histogram(stats.norm.cdf(scores), bin_probs)[0]
+            p_hat = histogram / len(scores)
+            if ece_method == 'one-sided':
+                errors = (bin_probs[1:] - np.cumsum(p_hat)) ** 2
+            elif ece_method == 'two-sided':
+                errors = (1 / ece_bins - p_hat) ** 2
+            else:
+                raise NotImplementedError
+            histograms = pd.concat([histograms, pd.Series(histogram, index=index.repeat(len(histogram)))])
+            ece_values = pd.concat([ece_values, pd.Series(errors, index=index.repeat(len(errors)))])
+
+            # QQ weighted squared quantile errors
+            scores_quantiles = np.quantile(scores, q=quantiles)
+            sqe = (scores_quantiles - normal_quantiles) ** 2
+            qq_values = pd.concat([qq_values, pd.Series(sqe, index=index.repeat(len(sqe)))])
+
+        # make sure satisfy G-test requirements comfortably (5 counts per bin minimum)
+        if histograms[histograms.index.get_level_values('Model').isin(COMPETITIVE_MODELS)].min() >= 20:
+            break
 
     # finalize ECE table
     ece = ece_values.groupby(level=measurements.index.names).sum()
