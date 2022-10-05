@@ -99,6 +99,7 @@ for trial in range(1, args.num_trials + 1):
             # otherwise, train and save the model
             else:
                 valid_freq = 10
+                tf.keras.utils.set_random_seed(fold_seed)
                 hist = model.fit(x=x_train, y=z_normalization.normalize_targets(y_train),
                                  validation_data=(x_valid, z_normalization.normalize_targets(y_valid)),
                                  validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
@@ -109,6 +110,7 @@ for trial in range(1, args.num_trials + 1):
                     pickle.dump(history, f)
 
             # save local performance measurements
+            tf.keras.utils.set_random_seed(fold_seed)
             params = model.predict(x=x_valid, verbose=0)
             for normalized in [True, False]:  # True must run first
                 if normalized:
