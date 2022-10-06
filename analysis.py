@@ -233,10 +233,11 @@ def vae_tables():
             with open(measurements_dict_file, 'rb') as f:
                 measurements_dict = pickle.load(f)
 
-            # analyze performance for each observation type
-            for observations in measurements_df.index.unique('Observations'):
-                obs_perf = measurements_df[measurements_df.index.get_level_values('Observations') == observations]
-                df = pd.concat([df, analyze_performance(obs_perf, dataset, z_scores=measurements_dict['Z'])])
+            # analyze performance for each observation type and architecture
+            config_indices = measurements_df.index.to_frame().set_index(measurements_df.index.names[1:])
+            for index in config_indices.index.unique():
+                df_obs_arch = measurements_df.loc[(slice(None),) + index, :]
+                df = pd.concat([df, analyze_performance(df_obs_arch, dataset, z_scores=measurements_dict['Z'])])
 
     # print the tables
     print_tables(df, 'vae', non_config_indices=('Model', 'Observations'))
