@@ -278,21 +278,28 @@ def toy_convergence_plots():
     # convergence figure
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
     models_and_configs = measurements.index.unique()
-    fig, ax = plt.subplots(nrows=2, ncols=len(models_and_configs), figsize=(5 * len(models_and_configs), 10))
+    fig, ax = plt.subplots(nrows=2, ncols=len(models_and_configs), figsize=(4 * len(models_and_configs), 8))
     for i, model in enumerate(MODELS):
         # title
         ax[0, i].set_title(model)
 
-        # plot data and data rich region
+        # plot data
         sizes = 12.5 * np.ones_like(data['x_train'])
         sizes[-2:] = 125
         ax[0, i].scatter(data['x_train'], data['y_train'], alpha=0.5, s=sizes)
-        x_bounds = [data['x_train'][:-2].min(), data['x_train'][:-2].max()]
-        ax[1, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[1, i].get_xaxis_transform())
+
+        # mark data rich regions
+        for r in range(ax.shape[0]):
+            x_bounds = [data['x_train'][:-2].min(), data['x_train'][:-2].max()]
+            ax[r, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[r, i].get_xaxis_transform())
+            x_bounds = [data['x_train'].min() - 0.1, data['x_train'].min() + 0.1]
+            ax[r, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[r, i].get_xaxis_transform())
+            x_bounds = [data['x_train'].max() - 0.1, data['x_train'].max() + 0.1]
+            ax[r, i].fill_between(x_bounds, 0, 1, color='grey', alpha=0.5, transform=ax[r, i].get_xaxis_transform())
 
         # predictive moments
         df = measurements.loc[model].reset_index()
-        legend = 'full' if i == len(MODELS) - 1 else False
+        legend = 'brief' if i == len(MODELS) - 1 else False
         sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=legend, palette=palette, ax=ax[0, i])
         sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=legend, palette=palette, ax=ax[1, i])
 
