@@ -199,9 +199,9 @@ def print_tables(df, experiment, non_config_indices=('Model',)):
 
         # print metric tables
         suffix = [] if len(configurations) == 1 else ['-'.join(config).replace(' ', '')]
-        for metric in ['RMSE', 'ECE', 'QQ', 'LL']:
-            file_name = '_'.join([experiment, metric.lower()] + suffix) + '.tex'
-            print_table(df_config[['Dataset', metric]].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
+        for metrics in [['RMSE', 'ECE'], ['RMSE'], ['ECE'], ['QQ'], ['LL']]:
+            file_name = '_'.join([experiment] + [m.lower() for m in metrics] + suffix) + '.tex'
+            print_table(df_config[['Dataset'] + metrics].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
 
 
 def uci_tables(normalized=True):
