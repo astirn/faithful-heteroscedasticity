@@ -167,6 +167,7 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     if len(df_latex.index.names) == 1:
         index = index[0]
     df_latex.loc[index, :] = total_wins
+    df_latex.loc[index, 'Unit Variance'] = '--'
 
     # style and save
     style = df_latex.style.hide(axis=1, names=True)
