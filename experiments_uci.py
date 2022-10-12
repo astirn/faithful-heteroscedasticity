@@ -102,7 +102,7 @@ for trial in range(1, args.num_trials + 1):
                 tf.keras.utils.set_random_seed(fold_seed)
                 hist = model.fit(x=x_train, y=z_normalization.normalize_targets(y_train),
                                  validation_data=(x_valid, z_normalization.normalize_targets(y_valid)),
-                                 validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(50e3), verbose=0,
+                                 validation_freq=valid_freq, batch_size=x_train.shape[0], epochs=int(60e3), verbose=0,
                                  callbacks=[RegressionCallback(validation_freq=valid_freq, early_stop_patience=100)])
                 model.save_weights(os.path.join(save_path, 'best_checkpoint'))
                 history = hist.history
