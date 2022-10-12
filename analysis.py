@@ -264,11 +264,6 @@ def crispr_tables():
 
 
 def toy_convergence_plots():
-    # set font sizes
-    plt.rc('axes', labelsize=20, titlesize=20)
-    plt.rc('xtick', labelsize=15)
-    plt.rc('ytick', labelsize=15)
-    plt.rc('legend', fontsize=15, title_fontsize=20)
 
     # ensure requisite files exist
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
@@ -328,9 +323,6 @@ def toy_convergence_plots():
     plt.tight_layout()
     fig.savefig(os.path.join('results', 'toy_convergence.pdf'))
 
-    # reset default parameters
-    plt.rcParams.update(plt.rcParamsDefault)
-
 
 def vae_plots(examples_per_class=1):
 
@@ -362,8 +354,8 @@ def vae_plots(examples_per_class=1):
                 i_plot = np.concatenate([i_plot, np.random.choice(i_class, size=examples_per_class)], axis=0)
 
             # prepare performance plot
-            fig, ax = plt.subplots(nrows=1 + len(MODELS), ncols=2, figsize=(15, 2 * (1 + len(MODELS))))
-            fig.suptitle(dataset)
+            fig, ax = plt.subplots(nrows=1 + len(MODELS), ncols=2, figsize=(16, 2 * (1 + len(MODELS))))
+            # fig.suptitle(dataset.replace('_', '-'))
 
             # plot data
             for col, observation in enumerate(observations):
@@ -394,7 +386,8 @@ def vae_plots(examples_per_class=1):
             fig.savefig(os.path.join('results', '_'.join(['vae', 'moments', dataset])) + '.pdf')
 
             # prepare variance decomposition plot
-            fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS), figsize=(5, 5))
+            fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS),
+                                   figsize=(8, 1.25 * (1 + len(HETEROSCEDASTIC_MODELS))))
             x = concat_examples(measurements_dict['Noise variance']['corrupt']) ** 0.5
             ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=5)
             ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
@@ -513,6 +506,13 @@ if __name__ == '__main__':
 
     # make sure output directory exists
     os.makedirs('results', exist_ok=True)
+
+    # set font sizes
+    plt.rc('axes', labelsize=20, titlesize=20)
+    plt.rc('figure', titlesize=25)
+    plt.rc('legend', fontsize=15, title_fontsize=20)
+    plt.rc('xtick', labelsize=15)
+    plt.rc('ytick', labelsize=15)
 
     # convergence experiment
     if args.experiment in {'all', 'convergence'} and os.path.exists(os.path.join('experiments', 'convergence')):
