@@ -17,8 +17,8 @@ from tensorflow_probability import distributions as tfd
 from tensorflow_probability import layers as tfpl
 
 
-def f_trunk(d_in, dim_z, **kwargs):
-    prior = tfd.Independent(tfd.Normal(loc=tf.zeros(dim_z), scale=1), reinterpreted_batch_ndims=1)
+def f_trunk(d_in, **kwargs):
+    prior = tfd.Independent(tfd.Normal(loc=tf.zeros(kwargs['dim_z']), scale=1), reinterpreted_batch_ndims=1)
     # weight = 0.5 is a workaround for: https://github.com/tensorflow/probability/issues/1215
     dkl = tfpl.KLDivergenceRegularizer(prior, use_exact_kl=True, weight=0.5)
     return tf.keras.Sequential(layers=[
@@ -27,8 +27,8 @@ def f_trunk(d_in, dim_z, **kwargs):
         tf.keras.layers.Conv2D(32, 5, strides=2, padding='same', activation='elu'),
         tf.keras.layers.Flatten(),
         tf.keras.layers.Dense(128, activation='elu'),
-        tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(dim_z), activation=None),
-        tfpl.IndependentNormal(dim_z, activity_regularizer=dkl),
+        tf.keras.layers.Dense(tfpl.IndependentNormal.params_size(kwargs['dim_z']), activation=None),
+        tfpl.IndependentNormal(kwargs['dim_z'], activity_regularizer=dkl),
     ])
 
 
@@ -43,6 +43,12 @@ def f_param(d_in, d_out, f_out, **kwargs):
     ])
     assert m.output_shape[1:] == d_out
     return m
+
+
+def f_vae(d_in, d_out, f_out, **kwargs):
+    vae = f_trunk(d_in, **kwargs)
+    vae.add(f_param(vae.output_shape[1:], d_out, f_out, **kwargs))
+    return vae
 
 
 if __name__ == '__main__':
@@ -69,6 +75,8 @@ if __name__ == '__main__':
     # models and configurations to run
     nn_kwargs = dict(dim_z=args.dim_z, f_trunk=f_trunk, f_param=f_param)
     models_and_configurations = get_models_and_configurations(nn_kwargs)
+    # nn_kwargs = dict(dim_z=args.dim_z, f_trunk=None, f_param=f_vae)
+    # models_and_configurations += get_models_and_configurations(nn_kwargs)
 
     # load data
     x_clean_train, train_labels, x_clean_valid, valid_labels = load_tensorflow_dataset(args.dataset)
