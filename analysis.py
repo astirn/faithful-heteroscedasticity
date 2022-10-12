@@ -229,6 +229,7 @@ def vae_tables():
     for dataset in os.listdir(os.path.join('experiments', 'vae')):
         measurements_df_file = os.path.join('experiments', 'vae', dataset, 'measurements_df.pkl')
         measurements_dict_file = os.path.join('experiments', 'vae', dataset, 'measurements_dict.pkl')
+        dataset = dataset.replace('_', '-')
         if os.path.exists(measurements_df_file) and os.path.exists(measurements_dict_file):
             measurements_df = pd.read_pickle(measurements_df_file).sort_index()
             with open(measurements_dict_file, 'rb') as f:
