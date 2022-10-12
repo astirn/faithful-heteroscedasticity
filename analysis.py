@@ -263,6 +263,11 @@ def crispr_tables():
 
 
 def toy_convergence_plots():
+    # set font sizes
+    plt.rc('axes', labelsize=20, titlesize=20)
+    plt.rc('xtick', labelsize=15)
+    plt.rc('ytick', labelsize=15)
+    plt.rc('legend', fontsize=15, title_fontsize=20)
 
     # ensure requisite files exist
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
@@ -279,7 +284,7 @@ def toy_convergence_plots():
     # convergence figure
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
     models_and_configs = measurements.index.unique()
-    fig, ax = plt.subplots(nrows=2, ncols=len(models_and_configs), figsize=(4 * len(models_and_configs), 8))
+    fig, ax = plt.subplots(nrows=2, ncols=len(models_and_configs), figsize=(5 * len(models_and_configs), 10))
     for i, model in enumerate(MODELS):
         # title
         ax[0, i].set_title(model)
@@ -310,11 +315,20 @@ def toy_convergence_plots():
         ax[0, i].set_ylim([-15, 20])
         ax[1, i].set_ylim([0, 6])
 
+        # clean up labels
+        ax[0, i].set_xlabel('')
+        if i > 0:
+            ax[0, i].set_ylabel('')
+            ax[1, i].set_ylabel('')
+
     # finalize and save figure
     ax[0, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     ax[1, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     plt.tight_layout()
     fig.savefig(os.path.join('results', 'toy_convergence.pdf'))
+
+    # reset default parameters
+    plt.rcParams.update(plt.rcParamsDefault)
 
 
 def vae_plots(examples_per_class=1):
