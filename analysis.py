@@ -455,6 +455,42 @@ def crispr_motif_plots():
             assert df_shap.index.nunique() == len(MODELS) * len(observations)
             assert df_mean_output.index.nunique() == len(MODELS) * len(observations)
 
+            # loop over the models
+            for model in ['Faithful Heteroscedastic']:
+
+                # SHAP figure
+                fig, ax = plt.subplots(nrows=5, figsize=(10, 15))
+                for i, moment in enumerate(['mean', 'std']):
+                    shap = dict(means=pd.DataFrame(), replicates=pd.DataFrame())
+                    for j, observation in enumerate(['replicates', 'means']):
+                        observation_name = observation.replace('std', 'standard deviation')
+                        title = 'SHAP of the estimated {:s} when trained on {:s}'.format(moment, observation_name)
+                        row = 2 * i + j
+                        ax[row].set_title(title)
+
+                        # SHAP values when trained on means and replicates
+                        for nt in ['A', 'C', 'G', 'T']:
+                            mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
+                            shap_values = np.array(df_shap.loc[(model, observation), moment].to_list())
+                            shap[observation][nt] = (mask * shap_values).sum(0) / mask.sum(0)
+                            shap[observation][nt] += df_mean_output.loc[(model, observation), moment] / len(shap[observation][nt])
+                        logomaker.Logo(shap[observation], flip_below=False, ax=ax[row])
+
+                    # SHAP noise variance = SHAP trained on replicates - SHAP trained on means
+                    if moment == 'std':
+                        shap_delta = pd.DataFrame()
+                        for nt in ['A', 'C', 'G', 'T']:
+                            shap_delta[nt] = shap['replicates'][nt] - shap['means'][nt]
+                        logomaker.Logo(shap_delta, flip_below=False, ax=ax[-1])
+                        ax[-1].set_title('SHAP of the estimated $\\sqrt{\\mathrm{noise \\ variance}}$')
+
+                # finalize and save
+                set_y_limits(ax[:2])
+                set_y_limits(ax[2:])
+                plt.tight_layout()
+                model = model.replace(' ', '')
+                fig.savefig(os.path.join('results', '_'.join(['crispr', 'shap', dataset, model]) + '.pdf'))
+
             # loop over the moments
             for moment in ['mean', 'std']:
                 if moment == 'mean':
@@ -529,7 +565,7 @@ if __name__ == '__main__':
 
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
-        crispr_tables()
+        # crispr_tables()
         crispr_motif_plots()
 
     # show plots
