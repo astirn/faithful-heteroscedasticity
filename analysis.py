@@ -494,46 +494,6 @@ def crispr_motif_plots():
                 model = model.replace(' ', '')
                 fig.savefig(os.path.join('results', '_'.join(['crispr', 'shap', dataset, model]) + '.pdf'))
 
-            # # loop over the moments
-            # for moment in ['mean', 'std']:
-            #     if moment == 'mean':
-            #         models = MODELS
-            #         delta_title = 'noise mean'
-            #     else:
-            #         models = HETEROSCEDASTIC_MODELS
-            #         delta_title = '$\\sqrt{\\mathrm{noise \\ variance}}$'
-            #
-            #     # SHAP figure
-            #     fig, ax = plt.subplots(nrows=len(models), ncols=len(observations) + 1, figsize=(15, 10))
-            #     fig.suptitle(dataset.capitalize())
-            #     ax[0, 0].set_title('SHAP of the {:s} when trained on means'.format(moment))
-            #     ax[0, 1].set_title('SHAP of the {:s} when trained on replicates'.format(moment))
-            #     ax[0, 2].set_title('SHAP of the {:s}'.format(delta_title))
-            #     for row, model in enumerate(models):
-            #         ax[row, 0].set_ylabel(model)
-            #
-            #         # SHAP values when trained on means and replicates
-            #         shap = dict(means=pd.DataFrame(), replicates=pd.DataFrame())
-            #         for observation in observations:
-            #             for nt in ['A', 'C', 'G', 'T']:
-            #                 mask = sequence_mask(df_shap.loc[(model, observation), 'sequence'])
-            #                 shap_values = np.array(df_shap.loc[(model, observation), moment].to_list())
-            #                 shap[observation][nt] = (mask * shap_values).sum(0) / mask.sum(0)
-            #                 # shap[observation][nt] += df_mean_output.loc[(model, observation), moment]
-            #             logomaker.Logo(shap[observation], flip_below=False, ax=ax[row, observations.index(observation)])
-            #
-            #         # SHAP noise variance = SHAP trained on replicates - SHAP trained on means
-            #         shap_delta = pd.DataFrame()
-            #         for nt in ['A', 'C', 'G', 'T']:
-            #             shap_delta[nt] = shap['replicates'][nt] - shap['means'][nt]
-            #         logomaker.Logo(shap_delta, flip_below=False, ax=ax[row, 2])
-            #
-            #     # finalize and save
-            #     set_y_limits(ax[:, :2])
-            #     set_y_limits(ax[:, 2])
-            #     plt.tight_layout()
-            #     fig.savefig(os.path.join('results', '_'.join(['crispr', 'shap', dataset, moment]) + '.pdf'))
-
 
 if __name__ == '__main__':
 
@@ -568,7 +528,7 @@ if __name__ == '__main__':
 
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
-        # crispr_tables()
+        crispr_tables()
         crispr_motif_plots()
 
     # show plots
