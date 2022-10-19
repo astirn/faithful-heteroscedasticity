@@ -33,7 +33,7 @@ if __name__ == '__main__':
     # script arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=2048, help='batch size')
-    parser.add_argument('--dataset', type=str, default='junction-targets', help='which dataset to use')
+    parser.add_argument('--dataset', type=str, default='flow-cytometry', help='which dataset to use')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--max_background', type=int, default=10000, help='maximum number of SHAP background samples')
