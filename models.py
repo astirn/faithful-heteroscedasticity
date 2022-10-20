@@ -283,14 +283,14 @@ if __name__ == '__main__':
     parser.add_argument('--beta', type=float, default=0.5, help='beta setting for BetaNLL')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
     parser.add_argument('--model', type=str, default='FaithfulHeteroscedastic', help='which model to use')
-    parser.add_argument('--seed', type=int, default=123456789, help='random number seed for reproducibility')
+    parser.add_argument('--seed', type=int, default=12345, help='random number seed for reproducibility')
     args = parser.parse_args()
 
     # set random number seed
     tf.keras.utils.set_random_seed(args.seed)
 
     # generate data
-    data = generate_toy_data()
+    toy_data = generate_toy_data()
 
     # pick the appropriate model
     if args.model == 'UnitVariance':
@@ -324,14 +324,14 @@ if __name__ == '__main__':
     ])
 
     # train model
-    hist = model.fit(x=data['x_train'], y=data['y_train'],
-                     batch_size=data['x_train'].shape[0], epochs=int(20e3), verbose=0,
+    hist = model.fit(x=toy_data['x_train'], y=toy_data['y_train'],
+                     batch_size=toy_data['x_train'].shape[0], epochs=int(20e3), verbose=0,
                      callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
-    p_y_x = model.predictive_distribution(x=data['x_test'])
+    p_y_x = model.predictive_distribution(x=toy_data['x_test'])
 
     # plot results for toy data
     title = pretty_model_name(model, dict())
-    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), plot_title=title, **data)
+    fancy_plot(predicted_mean=p_y_x.mean().numpy(), predicted_std=p_y_x.stddev().numpy(), plot_title=title, **toy_data)
     plt.show()
