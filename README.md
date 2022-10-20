@@ -64,3 +64,9 @@ We will update these instructions to include the two survival screen datasets wh
 python3 experiments_crispr.py --dataset flow-cytometry
 python3 analysis.py --experiment crispr
 ```
+
+### Faithful Student's T Regression (supplement)
+```
+python3 models.py --model HeteroscedasticStudent
+python3 models.py --model FaithfulHeteroscedasticStudent
+```

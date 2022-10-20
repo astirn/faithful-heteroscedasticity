@@ -1,7 +1,7 @@
 import argparse
+import os
 
 import numpy as np
-import seaborn as sns
 import tensorflow as tf
 
 from abc import ABC
@@ -216,6 +216,68 @@ class BetaNLL(Heteroscedastic, ABC):
         return params
 
 
+class HeteroscedasticStudent(Regression, ABC):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
+        self.likelihood = 'Student'
+        self.min_df = 3
+
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.f_df = f_param(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
+            self.f_loc = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
+            self.f_scale = f_param(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+        else:
+            self.f_trunk = f_trunk(dim_x, **kwargs)
+            dim_latent = self.f_trunk.output_shape[1:]
+            self.f_df = f_param(d_in=dim_latent, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
+            self.f_loc = f_param(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
+            self.f_scale = f_param(d_in=dim_latent, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        return {'df': self.min_df + self.f_df(z, **kwargs),
+                'loc': self.f_loc(z, **kwargs),
+                'scale': self.f_scale(z, **kwargs)}
+
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+            params = self.call(x, training=True)
+            py_x = tfpd.Independent(tfpd.StudentT(**params), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return params
+
+    def predictive_distribution(self, *, x=None, **params):
+        if params.keys() != {'df', 'loc', 'scale'}:
+            assert x is not None
+            params = self.call(x, training=False)
+        return tfpd.StudentT(**params)
+
+
+class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        HeteroscedasticStudent.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
+                                        name='FaithfulHeteroscedasticStudent', **kwargs)
+        self.likelihood = 'Student'
+
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+            z = self.f_trunk(x, training=True)
+            df = self.min_df + self.f_df(tf.stop_gradient(z), training=True)
+            loc = self.f_loc(z, training=True)
+            scale = self.f_scale(tf.stop_gradient(z), training=True)
+            py_loc = tfpd.Independent(tfpd.Normal(loc=loc, scale=1.0), 1)
+            py_std = tfpd.Independent(tfpd.StudentT(df, tf.stop_gradient(loc), scale), 1)
+            loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return {'df': df, 'loc': loc, 'scale': scale}
+
+
 def get_models_and_configurations(nn_kwargs):
     return [
         dict(model=UnitVariance, model_kwargs=dict(), nn_kwargs=nn_kwargs),
@@ -237,12 +299,17 @@ def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean
     predicted_mean = np.squeeze(predicted_mean)
     predicted_std = np.squeeze(predicted_std)
 
+    # clamp infinite values
+    predicted_std[np.isinf(predicted_std)] = 1e6
+
     # get a new figure
-    fig, ax = plt.subplots(2, 1)
+    fig, ax = plt.subplots(nrows=2, figsize=(7.5, 5))
     fig.suptitle(plot_title)
 
     # plot the data
-    sns.scatterplot(x_train, y_train, ax=ax[0])
+    sizes = 12.5 * np.ones_like(x_train)
+    sizes[-2:] = 125
+    ax[0].scatter(x_train, y_train, alpha=0.5, s=sizes)
 
     # plot the true mean and standard deviation
     ax[0].plot(x_test, target_mean, '--k')
@@ -250,15 +317,16 @@ def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean
     ax[0].plot(x_test, target_mean - target_std, ':k')
 
     # plot the model's mean and standard deviation
-    l = ax[0].plot(x_test, predicted_mean)[0]
+    l = ax[0].plot(x_test, predicted_mean, label='predicted')[0]
     ax[0].fill_between(x_test[:, ], predicted_mean - predicted_std, predicted_mean + predicted_std,
                        color=l.get_color(), alpha=0.5)
-    ax[0].plot(x_test, target_mean, '--k')
+    ax[0].plot(x_test, target_mean, '--k', label='truth')
 
     # clean it up
     ax[0].set_xlim([0, 10])
     ax[0].set_ylim([-12.5, 12.5])
-    ax[0].set_ylabel('y')
+    ax[0].set_ylabel('E[y|x]')
+    ax[0].legend()
 
     # plot the std
     ax[1].plot(x_test, predicted_std, label='predicted')
@@ -267,15 +335,14 @@ def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean
     ax[1].set_ylim([0, 6])
     ax[1].set_xlabel('x')
     ax[1].set_ylabel('std(y|x)')
-    plt.legend()
+    ax[1].legend()
 
-    return fig
+    # save the figure
+    os.makedirs('results', exist_ok=True)
+    fig.savefig(os.path.join('results', 'toy_' + plot_title.replace(' ', '') + '.pdf'))
 
 
 if __name__ == '__main__':
-
-    # enable background tiles on plots
-    sns.set(color_codes=True)
 
     # script arguments
     parser = argparse.ArgumentParser()
@@ -304,6 +371,10 @@ if __name__ == '__main__':
         model = FaithfulHeteroscedastic
     elif args.model == 'BetaNLL':
         model = BetaNLL
+    elif args.model == 'HeteroscedasticStudent':
+        model = HeteroscedasticStudent
+    elif args.model == 'FaithfulHeteroscedasticStudent':
+        model = FaithfulHeteroscedasticStudent
     else:
         raise NotImplementedError
     assert args.architecture in {'single', 'separate', 'shared'}
