@@ -86,7 +86,7 @@ class Gaussian(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
-        self.likelihood = 'Normal'
+        self.model_class = 'Normal'
 
     def predictive_distribution(self, *, x=None, mean=None, std=None):
         if mean is None or std is None:
@@ -209,7 +209,7 @@ class Student(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
-        self.likelihood = 'Student'
+        self.model_class = 'Student'
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'df', 'loc', 'scale'}:
