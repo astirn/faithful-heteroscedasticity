@@ -99,6 +99,7 @@ class UnitVarianceGaussian(Gaussian, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Gaussian.__init__(self, dim_x, f_trunk, name='UnitVariance', **kwargs)
+        self.model_class = 'Mean only'
         self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
