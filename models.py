@@ -42,8 +42,14 @@ def f_neural_net(d_in, d_out, d_hidden, f_out=None, **kwargs):
 
 class Regression(tf.keras.Model):
 
-    def __init__(self, **kwargs):
+    def __init__(self, dim_x, f_trunk, **kwargs):
         tf.keras.Model.__init__(self, name=kwargs['name'])
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.dim_f_trunk = dim_x
+        else:
+            self.f_trunk = f_trunk(dim_x, **kwargs)
+            self.dim_f_trunk = self.f_trunk.output_shape[1:]
 
     @staticmethod
     def parse_keras_inputs(data):
@@ -78,8 +84,9 @@ class Regression(tf.keras.Model):
 
 class Gaussian(Regression):
 
-    def __init__(self, **kwargs):
-        Regression.__init__(self, name=kwargs['name'])
+    def __init__(self, dim_x, f_trunk, **kwargs):
+        Regression.__init__(self, dim_x, f_trunk, **kwargs)
+        self.likelihood = 'Normal'
 
     def predictive_distribution(self, *, x=None, mean=None, std=None):
         if mean is None or std is None:
@@ -91,16 +98,8 @@ class Gaussian(Regression):
 class UnitVarianceGaussian(Gaussian, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Regression.__init__(self, name='UnitVariance', **kwargs)
-        self.likelihood = 'Normal'
-
-        if f_trunk is None:
-            self.f_trunk = lambda x, **k: x
-            self.f_loc = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-        else:
-            self.f_trunk = f_trunk(dim_x, **kwargs)
-            dim_latent = self.f_trunk.output_shape[1:]
-            self.f_loc = f_param(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        Gaussian.__init__(self, dim_x, f_trunk, name='UnitVariance', **kwargs)
+        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
         mean = self.f_loc(self.f_trunk(x, **kwargs), **kwargs)
@@ -119,18 +118,9 @@ class UnitVarianceGaussian(Gaussian, ABC):
 class HeteroscedasticGaussian(Gaussian, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Regression.__init__(self, name=kwargs.pop('name', 'Heteroscedastic'), **kwargs)
-        self.likelihood = 'Normal'
-
-        if f_trunk is None:
-            self.f_trunk = lambda x, **k: x
-            self.f_loc = f_param(d_in=dim_x, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-            self.f_scale = f_param(d_in=dim_x, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
-        else:
-            self.f_trunk = f_trunk(dim_x, **kwargs)
-            dim_latent = self.f_trunk.output_shape[1:]
-            self.f_loc = f_param(d_in=dim_latent, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-            self.f_scale = f_param(d_in=dim_latent, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+        Gaussian.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'Heteroscedastic'), **kwargs)
+        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
@@ -151,7 +141,6 @@ class SecondOrderMean(HeteroscedasticGaussian, ABC):
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         HeteroscedasticGaussian.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
                                          name='SecondOrderMean', **kwargs)
-        self.likelihood = 'Normal'
 
     def optimization_step(self, x, y):
 
@@ -184,7 +173,6 @@ class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         HeteroscedasticGaussian.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
                                          name='FaithfulHeteroscedastic', **kwargs)
-        self.likelihood = 'Normal'
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -204,7 +192,6 @@ class BetaNLL(HeteroscedasticGaussian, ABC):
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, beta=0.5, **kwargs):
         HeteroscedasticGaussian.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
                                          name='BetaNLL', **kwargs)
-        self.likelihood = 'Normal'
         self.beta = beta
 
     def optimization_step(self, x, y):
@@ -221,7 +208,7 @@ class BetaNLL(HeteroscedasticGaussian, ABC):
 class Student(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs['name'])
+        Regression.__init__(self, dim_x, f_trunk, **kwargs)
         self.likelihood = 'Student'
 
     def predictive_distribution(self, *, x=None, **params):
