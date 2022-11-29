@@ -220,8 +220,8 @@ class BetaNLL(HeteroscedasticGaussian, ABC):
 
 class Student(Regression):
 
-    def __init__(self, **kwargs):
-        Regression.__init__(self, name=kwargs['name'])
+    def __init__(self, dim_x, f_trunk, **kwargs):
+        Regression.__init__(self, dim_x, f_trunk, name=kwargs['name'])
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'df', 'loc', 'scale'}:
@@ -233,19 +233,13 @@ class Student(Regression):
 class HeteroscedasticStudent(Student, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
+        Student.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
         self.likelihood = 'Student'
         self.min_df = 3
 
-        if f_trunk is None:
-            self.f_trunk = lambda x, **k: x
-            d_in = dim_x
-        else:
-            self.f_trunk = f_trunk(dim_x, **kwargs)
-            d_in = self.f_trunk.output_shape[1:]
-        self.f_df = f_param(d_in=d_in, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
-        self.f_loc = f_param(d_in=d_in, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
-        self.f_scale = f_param(d_in=d_in, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+        self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
+        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
+        self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
