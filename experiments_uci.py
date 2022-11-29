@@ -82,7 +82,7 @@ for trial in range(1, args.num_trials + 1):
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
-            index, index_str = model_config_index(model_name, mag['nn_kwargs'])
+            index, index_str = model_config_index(model_name, model.model_class, **mag['nn_kwargs'])
             print('********** Trial {:d} | Fold {:d} | {:s} **********'.format(trial, fold, index_str))
 
             # determine where to save model

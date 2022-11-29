@@ -17,6 +17,10 @@ MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 
 
+def filter_model_class(df, model_class):
+    return df.loc[df.index.get_level_values('Class').isin(['Mean only'] + [model_class]), :].droplevel('Class')
+
+
 def drop_unused_index_levels(performance):
 
     # drop index levels with just one unique value
@@ -205,14 +209,15 @@ def print_tables(df, experiment, non_config_indices=('Model',)):
             print_table(df_config[['Dataset'] + metrics].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
 
 
-def uci_tables(normalized=True):
+def uci_tables(model_class, normalized=True):
 
     # loop over datasets with measurements
     df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'uci')):
         measurements_file = os.path.join('experiments', 'uci', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
-            measurements = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
+            measurements = pd.read_pickle(measurements_file).sort_index()
+            measurements = drop_unused_index_levels(filter_model_class(measurements, model_class))
             measurements = measurements[measurements['normalized'] == normalized]
 
             # analyze performance
@@ -263,7 +268,7 @@ def crispr_tables():
     print_tables(df, 'crispr', non_config_indices=('Model', 'Observations'))
 
 
-def toy_convergence_plots():
+def toy_convergence_plots(model_class):
 
     # ensure requisite files exist
     data_file = os.path.join('experiments', 'convergence', 'data.pkl')
@@ -274,7 +279,8 @@ def toy_convergence_plots():
     # load data and measurements
     with open(data_file, 'rb') as f:
         data = pickle.load(f)
-    measurements = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
+    measurements = pd.read_pickle(measurements_file).sort_index()
+    measurements = drop_unused_index_levels(filter_model_class(measurements, model_class))
     assert measurements.index.names == ['Model'], 'multiple configurations per model is not supported'
 
     # convergence figure
@@ -500,6 +506,7 @@ if __name__ == '__main__':
     # parser arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--experiment', type=str, default='all', help='which experiment to analyze')
+    parser.add_argument('--model_class', type=str, default='Normal', help='which model class to analyze')
     parser.add_argument('--seed', type=int, default=853211, help='random number seed for reproducibility')
     args = parser.parse_args()
 
@@ -515,19 +522,19 @@ if __name__ == '__main__':
 
     # convergence experiment
     if args.experiment in {'all', 'convergence'} and os.path.exists(os.path.join('experiments', 'convergence')):
-        toy_convergence_plots()
+        toy_convergence_plots(args.model_class)
 
     # UCI experiments
     if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):
-        uci_tables(normalized=True)
+        uci_tables(args.model_class, normalized=True)
 
     # VAE experiments
-    if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
+    if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):  # TODO: add model class support
         vae_tables()
         vae_plots()
 
     # CRISPR tables and figures
-    if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
+    if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):  # TODO: add model class support
         crispr_tables()
         crispr_motif_plots()
 

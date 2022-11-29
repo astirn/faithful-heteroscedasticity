@@ -131,7 +131,7 @@ if __name__ == '__main__':
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
-            index, index_str = model_config_index(model_name, {**{'Observations': observations}, **mag['nn_kwargs']})
+            index, index_str = model_config_index(model_name, **{**{'Observations': observations}, **mag['nn_kwargs']})  # TODO: add model class
             print('***** {:s} *****'.format(index_str))
 
             # determine where to save model

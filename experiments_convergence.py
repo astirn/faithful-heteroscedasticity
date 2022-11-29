@@ -58,7 +58,7 @@ for mag in models_and_configurations:
 
     # index for this model and configuration
     model_name = pretty_model_name(model, mag['model_kwargs'])
-    index, index_str = model_config_index(model_name, mag['nn_kwargs'])
+    index, index_str = model_config_index(model_name, model.model_class, **mag['nn_kwargs'])
     print('***** {:s} *****'.format(index_str))
 
     # if results exist, continue unless we are forcing their replacement
