@@ -135,9 +135,8 @@ class HeteroscedasticGaussian(Gaussian, ABC):
 
 class SecondOrderMean(HeteroscedasticGaussian, ABC):
 
-    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        HeteroscedasticGaussian.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
-                                         name='SecondOrderMean', **kwargs)
+    def __init__(self, **kwargs):
+        HeteroscedasticGaussian.__init__(self, name='SecondOrderMean', **kwargs)
 
     def optimization_step(self, x, y):
 
@@ -167,9 +166,8 @@ class SecondOrderMean(HeteroscedasticGaussian, ABC):
 
 class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
 
-    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        HeteroscedasticGaussian.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
-                                         name='FaithfulHeteroscedastic', **kwargs)
+    def __init__(self, **kwargs):
+        HeteroscedasticGaussian.__init__(self, name='FaithfulHeteroscedastic', **kwargs)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -186,9 +184,8 @@ class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
 
 class BetaNLL(HeteroscedasticGaussian, ABC):
 
-    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, beta=0.5, **kwargs):
-        HeteroscedasticGaussian.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
-                                         name='BetaNLL', **kwargs)
+    def __init__(self, *, beta=0.5, **kwargs):
+        HeteroscedasticGaussian.__init__(self, name='BetaNLL', **kwargs)
         self.beta = beta
 
     def optimization_step(self, x, y):
@@ -243,9 +240,8 @@ class HeteroscedasticStudent(Student, ABC):
 
 class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
 
-    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        HeteroscedasticStudent.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
-                                        name='FaithfulHeteroscedasticStudent', **kwargs)
+    def __init__(self, **kwargs):
+        HeteroscedasticStudent.__init__(self, name='FaithfulHeteroscedasticStudent', **kwargs)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
