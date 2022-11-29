@@ -222,6 +222,7 @@ class Student(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, name=kwargs['name'])
+        self.likelihood = 'Student'
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'df', 'loc', 'scale'}:
@@ -234,7 +235,6 @@ class HeteroscedasticStudent(Student, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Student.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
-        self.likelihood = 'Student'
         self.min_df = 3
 
         self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
@@ -262,7 +262,6 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         HeteroscedasticStudent.__init__(self, dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param,
                                         name='FaithfulHeteroscedasticStudent', **kwargs)
-        self.likelihood = 'Student'
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
