@@ -1,0 +1,13 @@
+\begin{tabular}{ll|ccc|ccc|ccc|ccc|ccc|ccc}
+\toprule
+{} & {} & \multicolumn{3}{r}{Unit Variance} & \multicolumn{3}{r}{Heteroscedastic} & \multicolumn{3}{r}{Beta NLL (0.5)} & \multicolumn{3}{r}{Beta NLL (1.0)} & \multicolumn{3}{r}{Second Order Mean} & \multicolumn{3}{r}{Faithful Heteroscedastic} \\
+{} & {} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} \\
+{Dataset} & {Observations} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} \\
+\midrule
+\multirow[t]{2}{*}{fashion-mnist} & clean & 0.923 & 0.00232 & -1.05e+03 & \sout{1.61} & \sout{0.00013} & \sout{-711} & \sout{0.962} & \sout{0.000161} & \sout{78.6} & \sout{0.945} & \sout{0.000374} & \sout{-452} & \sout{0.935} & \sout{2.26e-05} & \sout{-144} & \textbf{0.923} & \textbf{7.12e-05} & \textbf{-217} \\
+ & corrupt & 1.17 & 0.00251 & -1.26e+03 & \sout{1.77} & \sout{0.000178} & \sout{-482} & \sout{1.2} & \sout{0.000296} & \sout{-81.9} & \sout{1.19} & \sout{0.000576} & \sout{-976} & \sout{1.19} & \sout{2.4e-05} & \sout{-320} & \textbf{1.17} & \textbf{6.33e-05} & \textbf{-392} \\
+\multirow[t]{2}{*}{mnist} & clean & 0.759 & 0.00923 & -946 & \sout{2.27} & \sout{0.00072} & \sout{117} & \sout{0.85} & \sout{0.000182} & \sout{-3.56e+03} & \sout{0.78} & \sout{0.00106} & \sout{-741} & \sout{0.792} & \sout{1.89e-05} & \sout{546} & \textbf{0.759} & \textbf{3.16e-05} & \textbf{119} \\
+ & corrupt & 1.04 & 0.00839 & -1.15e+03 & \sout{2.33} & \sout{0.000555} & \sout{-361} & \sout{1.07} & \sout{0.000243} & \sout{-1.53e+04} & \sout{1.07} & \sout{0.00668} & \sout{-1.43e+05} & \sout{1.06} & \sout{2.51e-05} & \sout{220} & \textbf{1.04} & \textbf{5.78e-05} & \textbf{-358} \\
+\textit{{Total wins or ties}} &  & -- & -- & -- & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{4} & \textit{4} & \textit{4} \\
+\bottomrule
+\end{tabular}
