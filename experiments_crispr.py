@@ -155,8 +155,8 @@ if __name__ == '__main__':
             py_x = tfd.Independent(model.predictive_distribution(**params), reinterpreted_batch_ndims=1)
             measurements = pd.concat([measurements, pd.DataFrame({
                 'log p(y|x)': py_x.log_prob(y_valid),
-                'squared errors': tf.reduce_sum((y_valid - params['mean']) ** 2, axis=-1),
-                'z': ((y_valid - params['mean']) / params['std']).numpy().tolist(),
+                'squared errors': tf.reduce_sum((y_valid - py_x.mean()) ** 2, axis=-1),
+                'z': ((y_valid - py_x.mean()) / py_x.stddev()).numpy().tolist(),
             }, index.repeat(len(y_valid)))])
 
             # copy model into a Sequential model because the SHAP package does not support otherwise

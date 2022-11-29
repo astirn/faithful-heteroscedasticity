@@ -16,22 +16,18 @@ class ZScoreNormalization(object):
         return (y - self.y_mean) / self.y_std
 
     def scale_parameters(self, name, value):
-        if name == 'mean':
+        if name == 'loc':
             return value * self.y_std + self.y_mean
-        elif name == 'std':
+        elif name == 'scale':
             return value * self.y_std
         elif name == 'var':
             return value * self.y_var
+        elif name == 'df':
+            return value
         elif name == 'y':
             return value
         else:
             raise NotImplementedError
-
-    # def de_whiten_precision(self, precision):
-    #     return precision / self.y_var
-    #
-    # def de_whiten_log_precision(self, log_precision):
-    #     return log_precision - tf.math.log(self.y_var)
 
 
 def pretty_model_name(model, model_kwargs):

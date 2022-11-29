@@ -122,8 +122,8 @@ for trial in range(1, args.num_trials + 1):
                 measurements = pd.concat([measurements, pd.DataFrame({
                     'normalized': normalized,
                     'log p(y|x)': py_x.log_prob(y),
-                    'squared errors': tf.reduce_sum((y - params['mean']) ** 2, axis=-1),
-                    'z': ((y - params['mean']) / params['std']).numpy().tolist(),
+                    'squared errors': tf.reduce_sum((y - py_x.mean()) ** 2, axis=-1),
+                    'z': ((y - py_x.mean()) / py_x.stddev()).numpy().tolist(),
                 }, index.repeat(len(y_valid)))])
 
 # save performance measures

@@ -84,11 +84,11 @@ class Gaussian(Regression):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
         self.model_class = 'Normal'
 
-    def predictive_distribution(self, *, x=None, mean=None, std=None):
-        if mean is None or std is None:
+    def predictive_distribution(self, *, x=None, **params):
+        if params.keys() != {'loc', 'scale'}:
             assert x is not None
-            mean, std = self.call(x, training=False).values()
-        return tfpd.Normal(loc=mean, scale=std)
+            params = self.call(x, training=False)
+        return tfpd.Normal(**params)
 
 
 class UnitVarianceGaussian(Gaussian, ABC):
@@ -100,12 +100,12 @@ class UnitVarianceGaussian(Gaussian, ABC):
 
     def call(self, x, **kwargs):
         mean = self.f_mean(self.f_trunk(x, **kwargs), **kwargs)
-        return {'mean': mean, 'std': tf.ones_like(mean)}
+        return {'loc': mean, 'scale': tf.ones_like(mean)}
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.Normal(loc=params['mean'], scale=1.0), reinterpreted_batch_ndims=1)
+            py_x = tfpd.Independent(tfpd.Normal(loc=params['loc'], scale=1.0), reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_x.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
@@ -121,7 +121,7 @@ class HeteroscedasticGaussian(Gaussian, ABC):
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
-        return {'mean': self.f_mean(z, **kwargs), 'std': self.f_scale(z, **kwargs)}
+        return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(z, **kwargs)}
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -150,7 +150,7 @@ class SecondOrderMean(HeteroscedasticGaussian, ABC):
         d_nll_d_params = tape.gradient(nll, params)
 
         # second order adjustment of gradient w.r.t. the mean
-        d_nll_d_params['mean'] = d_nll_d_params['mean'] * params['std'] ** 2
+        d_nll_d_params['loc'] = d_nll_d_params['loc'] * params['scale'] ** 2
         d_nll_d_params = tf.concat(list(d_nll_d_params.values()), axis=1)
 
         # finalize and apply gradients
@@ -179,7 +179,7 @@ class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return {'mean': mean, 'std': std}
+        return {'loc': mean, 'scale': std}
 
 
 class BetaNLL(HeteroscedasticGaussian, ABC):
@@ -192,7 +192,7 @@ class BetaNLL(HeteroscedasticGaussian, ABC):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
             py_x = tfpd.Normal(*params.values())
-            beta_nll = -py_x.log_prob(y) * tf.stop_gradient(params['std'] ** (2 * self.beta))
+            beta_nll = -py_x.log_prob(y) * tf.stop_gradient(params['scale'] ** (2 * self.beta))
             loss = tf.reduce_sum(beta_nll) / tf.cast(tf.shape(beta_nll)[0], tf.float32)
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))

@@ -169,13 +169,13 @@ if __name__ == '__main__':
             py_x = tfd.Independent(model.predictive_distribution(**params), tf.rank(x_valid) - 1)
             measurements_df = pd.concat([measurements_df, pd.DataFrame({
                 'log p(y|x)': py_x.log_prob(x_valid),
-                'squared errors': tf.einsum('abcd->a', (x_valid - params['mean']) ** 2) / num_pixels,
+                'squared errors': tf.einsum('abcd->a', (x_valid - py_x.mean()) ** 2) / num_pixels,
             }, index.repeat(py_x.batch_shape))])
 
             # update measurements dictionary
-            measurements_dict['Mean'].update({index_str: params['mean']})
-            measurements_dict['Std.'].update({index_str: params['std']})
-            z_scores = (x_valid - params['mean']) / params['std']
+            measurements_dict['Mean'].update({index_str: py_x.mean()})
+            measurements_dict['Std.'].update({index_str: py_x.stddev()})
+            z_scores = (x_valid - py_x.mean()) / py_x.stddev()
             measurements_dict['Z'].update({index_str: z_scores.numpy()})
 
     # save performance measures and model outputs
