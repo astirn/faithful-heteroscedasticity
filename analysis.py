@@ -10,9 +10,12 @@ import scipy.stats as stats
 import seaborn as sns
 
 HOMOSCEDASTIC_MODELS = ('Unit Variance',)
-BASELINE_HETEROSCEDASTIC_MODELS = ('Heteroscedastic', 'Beta NLL (0.5)', 'Beta NLL (1.0)')
-OUR_HETEROSCEDASTIC_MODELS = ('Second Order Mean', 'Faithful Heteroscedastic')
-HETEROSCEDASTIC_MODELS = BASELINE_HETEROSCEDASTIC_MODELS + OUR_HETEROSCEDASTIC_MODELS
+HETEROSCEDASTIC_MODELS = (
+    # Normal models
+    'Heteroscedastic', 'Beta NLL (0.5)', 'Beta NLL (1.0)', 'Second Order Mean', 'Faithful Heteroscedastic',
+    # Student models
+    'Heteroscedastic Student', 'Faithful Heteroscedastic Student'
+)
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 
@@ -287,7 +290,9 @@ def toy_convergence_plots(model_class):
     palette = sns.color_palette('ch:s=.3,rot=-.25', as_cmap=True)
     models_and_configs = measurements.index.unique()
     fig, ax = plt.subplots(nrows=2, ncols=len(models_and_configs), figsize=(5 * len(models_and_configs), 10))
-    for i, model in enumerate(MODELS):
+    models = [model for model in MODELS if model in measurements.index]
+    for i, model in enumerate(models):
+
         # title
         ax[0, i].set_title(model)
 
@@ -307,7 +312,7 @@ def toy_convergence_plots(model_class):
 
         # predictive moments
         df = measurements.loc[model].reset_index()
-        legend = 'brief' if i == len(MODELS) - 1 else False
+        legend = 'brief' if i == len(models) - 1 else False
         sns.lineplot(data=df, x='x', y='Mean', hue='Epoch', legend=legend, palette=palette, ax=ax[0, i])
         sns.lineplot(data=df, x='x', y='Std. Deviation', hue='Epoch', legend=legend, palette=palette, ax=ax[1, i])
 
