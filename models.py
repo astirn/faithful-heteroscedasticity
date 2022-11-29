@@ -218,7 +218,19 @@ class BetaNLL(HeteroscedasticGaussian, ABC):
         return params
 
 
-class HeteroscedasticStudent(Regression, ABC):
+class Student(Regression):
+
+    def __init__(self, **kwargs):
+        Regression.__init__(self, name=kwargs['name'])
+
+    def predictive_distribution(self, *, x=None, **params):
+        if params.keys() != {'df', 'loc', 'scale'}:
+            assert x is not None
+            params = self.call(x, training=False)
+        return tfpd.StudentT(**params)
+
+
+class HeteroscedasticStudent(Student, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Regression.__init__(self, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
@@ -251,12 +263,6 @@ class HeteroscedasticStudent(Regression, ABC):
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
-
-    def predictive_distribution(self, *, x=None, **params):
-        if params.keys() != {'df', 'loc', 'scale'}:
-            assert x is not None
-            params = self.call(x, training=False)
-        return tfpd.StudentT(**params)
 
 
 class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
