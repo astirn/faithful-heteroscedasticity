@@ -65,15 +65,11 @@ class Regression(tf.keras.Model):
         x, y = self.parse_keras_inputs(data)
         params = self.optimization_step(x, y)
         self.update_metrics(y, **params)
-
         return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
         x, y = self.parse_keras_inputs(data)
-
-        # update metrics
         self.update_metrics(y, **self.call(x, training=True))
-
         return {m.name: m.result() for m in self.metrics}
 
     def update_metrics(self, y, **params):
@@ -223,8 +219,8 @@ class HeteroscedasticStudent(Student, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Student.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
-        self.min_df = 3
 
+        self.min_df = 3
         self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
         self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
