@@ -96,10 +96,10 @@ class UnitVarianceGaussian(Gaussian, ABC):
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Gaussian.__init__(self, dim_x, f_trunk, name='UnitVariance', **kwargs)
         self.model_class = 'Mean only'
-        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
-        mean = self.f_loc(self.f_trunk(x, **kwargs), **kwargs)
+        mean = self.f_mean(self.f_trunk(x, **kwargs), **kwargs)
         return {'mean': mean, 'std': tf.ones_like(mean)}
 
     def optimization_step(self, x, y):
@@ -116,12 +116,12 @@ class HeteroscedasticGaussian(Gaussian, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Gaussian.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'Heteroscedastic'), **kwargs)
-        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+        self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
-        return {'mean': self.f_loc(z, **kwargs), 'std': self.f_scale(z, **kwargs)}
+        return {'mean': self.f_mean(z, **kwargs), 'std': self.f_scale(z, **kwargs)}
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -174,7 +174,7 @@ class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             z = self.f_trunk(x, training=True)
-            mean = self.f_loc(z, training=True)
+            mean = self.f_mean(z, training=True)
             std = self.f_scale(tf.stop_gradient(z), training=True)
             py_loc = tfpd.Independent(tfpd.Normal(loc=mean, scale=1.0), reinterpreted_batch_ndims=1)
             py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(mean), scale=std), reinterpreted_batch_ndims=1)
