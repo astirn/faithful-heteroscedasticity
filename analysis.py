@@ -9,24 +9,23 @@ import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
 
-MEAN_ONLY = 'Unit Variance Normal'
 HETEROSCEDASTIC_MODELS = (
-    # Normal models
-    'Heteroscedastic Normal',
+    'Heteroscedastic',
     'Beta NLL (0.5)',
     'Beta NLL (1.0)',
     'Second Order Mean',
-    'Faithful Heteroscedastic Normal',
-    # Student models
-    'Heteroscedastic Student',
-    'Faithful Heteroscedastic Student'
+    'Faithful Heteroscedastic',
 )
-MODELS = (MEAN_ONLY,) + HETEROSCEDASTIC_MODELS
+MODELS = ('Unit Variance',) + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 
 
 def filter_model_class(df, model_class):
-    return df.loc[df.index.get_level_values('Class').isin(['Mean only'] + [model_class]), :].droplevel('Class')
+    df = df.loc[df.index.get_level_values('Class') == model_class, :].droplevel('Class').reset_index('Model')
+    df['Model'] = df['Model'].apply(lambda s: s.replace(' ' + model_class, ''))
+    df.set_index('Model', append=True, inplace=True)
+    df.index = df.index.reorder_levels(['Model'] + list(df.index.names)[:-1])
+    return df
 
 
 def drop_unused_index_levels(performance):
@@ -75,14 +74,14 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_method='two-sided
 
     # identify unfaithful models
     unfaithful_models = []
-    null_squared_errors = measurements.loc[(MEAN_ONLY,), 'squared errors']
+    null_squared_errors = measurements.loc[('Unit Variance',), 'squared errors']
     for index in measurements.index.unique():
         squared_errors = measurements.loc[index, 'squared errors']
         if stats.ttest_rel(squared_errors, null_squared_errors, alternative='greater')[1] < alpha:
             unfaithful_models += [index]
 
     # exclude any unfaithful model from our candidates list
-    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~(rmse.index.get_level_values('Model') == MEAN_ONLY)]
+    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~(rmse.index.get_level_values('Model') == 'Unit Variance')]
     candidates = candidates.index.unique()
 
     # finalize RMSE table
@@ -179,7 +178,7 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     if len(df_latex.index.names) == 1:
         index = index[0]
     df_latex.loc[index, :] = total_wins
-    df_latex.loc[index, MEAN_ONLY] = '--'
+    df_latex.loc[index, 'Unit Variance'] = '--'
 
     # style and save
     style = df_latex.style.hide(axis=1, names=True)

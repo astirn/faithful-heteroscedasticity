@@ -72,7 +72,7 @@ class Regression(tf.keras.Model):
 
     def test_step(self, data):
         x, y = self.parse_keras_inputs(data)
-        self.update_metrics(y, **self.call(x, training=True))
+        self.update_metrics(y, **self.call(x, training=False))
         return {m.name: m.result() for m in self.metrics}
 
     def update_metrics(self, y, **params):
@@ -97,8 +97,7 @@ class Normal(Regression):
 class UnitVarianceNormal(Normal, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Normal.__init__(self, dim_x, f_trunk, name='UnitVarianceNormal', **kwargs)
-        self.model_class = 'Mean only'
+        Normal.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'UnitVarianceNormal'), **kwargs)
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
