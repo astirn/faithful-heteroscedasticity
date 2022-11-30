@@ -202,10 +202,10 @@ class BetaNLL(HeteroscedasticNormal, ABC):
         return params
 
 
-class Ensemble(Regression):
+class Ensemble(tf.keras.Model):
 
-    def __init__(self, *, dim_x, f_trunk=None, m, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, **kwargs)
+    def __init__(self, *, m, **kwargs):
+        tf.keras.Model.__init__(self, name=kwargs['name'])
         self.m = m
 
     def predictive_distribution(self, *, x=None, **params):
@@ -219,11 +219,27 @@ class Ensemble(Regression):
             components_distribution=tfpd.Normal(**params))
 
 
+class UnitVarianceMonteCarloDropout(Ensemble, UnitVarianceNormal, ABC):
+
+    def __init__(self, *, dropout=0.005, m=1000, **kwargs):
+        kwargs.update(dict(dropout=dropout))
+        Ensemble.__init__(self, m=m, name='UnitVarianceMonteCarloDropout')
+        UnitVarianceNormal.__init__(self, name='UnitVarianceMonteCarloDropout', **kwargs)
+        self.model_class = 'Monte Carlo Dropout'
+
+    def call(self, x, **kwargs):
+        if kwargs['training']:
+            loc = tf.expand_dims(self.f_mean(self.f_trunk(x, training=True), training=True), axis=0)
+        else:
+            loc = tf.stack([self.f_mean(self.f_trunk(x, training=True), training=True) for _ in range(self.m)])
+        return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
+
+
 class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
 
-    def __init__(self, *, dropout=0.2, m=100, **kwargs):
-        kwargs.update(dict(dropout=dropout, m=m))
-        Ensemble.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
+    def __init__(self, *, dropout=0.005, m=1000, **kwargs):
+        kwargs.update(dict(dropout=dropout))
+        Ensemble.__init__(self, m=m, name='HeteroscedasticMonteCarloDropout')
         HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
         self.model_class = 'Monte Carlo Dropout'
 
@@ -233,8 +249,8 @@ class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
             loc = tf.expand_dims(self.f_mean(z, training=True), axis=0)
             scale = tf.expand_dims(self.f_scale(z, training=True), axis=0)
         else:
-            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.m)], axis=0)
             reshape_dims = tf.stack([self.m, tf.shape(x)[0], -1])
+            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.m)], axis=0)
             loc = tf.reshape(self.f_mean(z, training=True), reshape_dims)
             scale = tf.reshape(self.f_scale(z, training=True), reshape_dims)
         return {'loc': loc, 'scale': scale}
@@ -391,6 +407,8 @@ if __name__ == '__main__':
         model = FaithfulHeteroscedasticNormal
     elif args.model == 'BetaNLL':
         model = BetaNLL
+    elif args.model == 'UnitVarianceMonteCarloDropout':
+        model = UnitVarianceMonteCarloDropout
     elif args.model == 'HeteroscedasticMonteCarloDropout':
         model = HeteroscedasticMonteCarloDropout
     elif args.model == 'HeteroscedasticStudent':
@@ -409,7 +427,7 @@ if __name__ == '__main__':
         model = model(dim_x=1, dim_y=1, f_param=f_neural_net, **config)
 
     # build the model
-    optimizer = tf.keras.optimizers.Adam(5e-3)
+    optimizer = tf.keras.optimizers.Adam(1e-3)
     model.compile(optimizer=optimizer, run_eagerly=args.debug, metrics=[
         MeanLogLikelihood(),
         RootMeanSquaredError(),
@@ -417,8 +435,9 @@ if __name__ == '__main__':
     ])
 
     # train model
+    epochs = int(60e3) if model.model_class == 'Monte Carlo Dropout' else int(30e3)
     hist = model.fit(x=toy_data['x_train'], y=toy_data['y_train'],
-                     batch_size=toy_data['x_train'].shape[0], epochs=int(20e3), verbose=0,
+                     batch_size=toy_data['x_train'].shape[0], epochs=epochs, verbose=0,
                      callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
