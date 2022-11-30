@@ -208,11 +208,11 @@ class Ensemble(Regression):
         if params.keys() != {'loc', 'scale'}:
             assert x is not None
             params = self.call(x, training=False)
-            return tfpd.MixtureSameFamily(
-                mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(params['loc'])[-1])),
-                components_distribution=tfpd.Normal(**params))
-        else:
-            return tfpd.Normal(**params)
+        params['loc'] = tf.transpose(params['loc'], [1, 2, 0])
+        params['scale'] = tf.transpose(params['scale'], [1, 2, 0])
+        return tfpd.MixtureSameFamily(
+            mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(params['loc'])[-1])),
+            components_distribution=tfpd.Normal(**params))
 
 
 class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
@@ -227,13 +227,13 @@ class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
     def call(self, x, **kwargs):
         if kwargs['training']:
             z = self.f_trunk(x, training=True)
-            loc = self.f_mean(z, training=True)
-            scale = self.f_scale(z, training=True)
+            loc = tf.expand_dims(self.f_mean(z, training=True), axis=0)
+            scale = tf.expand_dims(self.f_scale(z, training=True), axis=0)
         else:
             z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.m)], axis=0)
             reshape_dims = tf.stack([self.m, tf.shape(x)[0], -1])
-            loc = tf.transpose(tf.reshape(self.f_mean(z, training=True), reshape_dims), [1, 2, 0])
-            scale = tf.transpose(tf.reshape(self.f_scale(z, training=True), reshape_dims), [1, 2, 0])
+            loc = tf.reshape(self.f_mean(z, training=True), reshape_dims)
+            scale = tf.reshape(self.f_scale(z, training=True), reshape_dims)
         return {'loc': loc, 'scale': scale}
 
 
