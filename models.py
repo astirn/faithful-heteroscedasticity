@@ -221,9 +221,10 @@ class Ensemble(tf.keras.Model):
 class UnitVarianceMonteCarloDropout(Ensemble, UnitVarianceNormal, ABC):
 
     def __init__(self, *, dropout=0.005, m=1000, **kwargs):
+        name = 'UnitVarianceMonteCarloDropout'
         kwargs.update(dict(dropout=dropout))
-        Ensemble.__init__(self, m=m, name='UnitVarianceMonteCarloDropout')
-        UnitVarianceNormal.__init__(self, name='UnitVarianceMonteCarloDropout', **kwargs)
+        Ensemble.__init__(self, m=m, name=name)
+        UnitVarianceNormal.__init__(self, name=name, **kwargs)
         self.model_class = 'Monte Carlo Dropout'
 
     def call(self, x, **kwargs):
