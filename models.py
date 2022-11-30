@@ -239,8 +239,9 @@ class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
 
     def __init__(self, *, dropout=0.005, m=1000, **kwargs):
         kwargs.update(dict(dropout=dropout))
-        Ensemble.__init__(self, m=m, name='HeteroscedasticMonteCarloDropout')
-        HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
+        name = kwargs.pop('name', 'HeteroscedasticMonteCarloDropout')
+        Ensemble.__init__(self, m=m, name=name)
+        HeteroscedasticNormal.__init__(self, name=name, **kwargs)
         self.model_class = 'Monte Carlo Dropout'
 
     def call(self, x, **kwargs):
