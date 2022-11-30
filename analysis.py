@@ -12,9 +12,14 @@ import seaborn as sns
 HOMOSCEDASTIC_MODELS = ('Unit Variance',)
 HETEROSCEDASTIC_MODELS = (
     # Normal models
-    'Heteroscedastic', 'Beta NLL (0.5)', 'Beta NLL (1.0)', 'Second Order Mean', 'Faithful Heteroscedastic',
+    'Heteroscedastic Normal',
+    'Beta NLL (0.5)',
+    'Beta NLL (1.0)',
+    'Second Order Mean',
+    'Faithful Heteroscedastic Normal',
     # Student models
-    'Heteroscedastic Student', 'Faithful Heteroscedastic Student'
+    'Heteroscedastic Student',
+    'Faithful Heteroscedastic Student'
 )
 MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')

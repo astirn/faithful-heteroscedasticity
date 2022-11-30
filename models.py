@@ -78,7 +78,7 @@ class Regression(tf.keras.Model):
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
 
-class Gaussian(Regression):
+class Normal(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
@@ -91,10 +91,10 @@ class Gaussian(Regression):
         return tfpd.Normal(**params)
 
 
-class UnitVarianceGaussian(Gaussian, ABC):
+class UnitVarianceNormal(Normal, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Gaussian.__init__(self, dim_x, f_trunk, name='UnitVariance', **kwargs)
+        Normal.__init__(self, dim_x, f_trunk, name='UnitVariance', **kwargs)
         self.model_class = 'Mean only'
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
@@ -112,10 +112,10 @@ class UnitVarianceGaussian(Gaussian, ABC):
         return params
 
 
-class HeteroscedasticGaussian(Gaussian, ABC):
+class HeteroscedasticNormal(Normal, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Gaussian.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'Heteroscedastic'), **kwargs)
+        Normal.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
@@ -133,10 +133,10 @@ class HeteroscedasticGaussian(Gaussian, ABC):
         return params
 
 
-class SecondOrderMean(HeteroscedasticGaussian, ABC):
+class SecondOrderMean(HeteroscedasticNormal, ABC):
 
     def __init__(self, **kwargs):
-        HeteroscedasticGaussian.__init__(self, name='SecondOrderMean', **kwargs)
+        HeteroscedasticNormal.__init__(self, name='SecondOrderMean', **kwargs)
 
     def optimization_step(self, x, y):
 
@@ -164,10 +164,10 @@ class SecondOrderMean(HeteroscedasticGaussian, ABC):
         return params
 
 
-class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
+class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
 
     def __init__(self, **kwargs):
-        HeteroscedasticGaussian.__init__(self, name='FaithfulHeteroscedastic', **kwargs)
+        HeteroscedasticNormal.__init__(self, name='FaithfulHeteroscedasticNormal', **kwargs)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -182,10 +182,10 @@ class FaithfulHeteroscedasticGaussian(HeteroscedasticGaussian, ABC):
         return {'loc': mean, 'scale': std}
 
 
-class BetaNLL(HeteroscedasticGaussian, ABC):
+class BetaNLL(HeteroscedasticNormal, ABC):
 
     def __init__(self, *, beta=0.5, **kwargs):
-        HeteroscedasticGaussian.__init__(self, name='BetaNLL', **kwargs)
+        HeteroscedasticNormal.__init__(self, name='BetaNLL', **kwargs)
         self.beta = beta
 
     def optimization_step(self, x, y):
@@ -259,10 +259,10 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
 
 def get_models_and_configurations(nn_kwargs):
     return [
-        dict(model=UnitVarianceGaussian, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=HeteroscedasticGaussian, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=UnitVarianceNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=HeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedasticGaussian, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
     ]
@@ -341,13 +341,13 @@ if __name__ == '__main__':
     # pick the appropriate model
     if args.model == 'UnitVarianceGaussian':
         args.architecture = 'single'
-        model = UnitVarianceGaussian
+        model = UnitVarianceNormal
     elif args.model == 'HeteroscedasticGaussian':
-        model = HeteroscedasticGaussian
+        model = HeteroscedasticNormal
     elif args.model == 'SecondOrderMean':
         model = SecondOrderMean
     elif args.model == 'FaithfulHeteroscedasticGaussian':
-        model = FaithfulHeteroscedasticGaussian
+        model = FaithfulHeteroscedasticNormal
     elif args.model == 'BetaNLL':
         model = BetaNLL
     elif args.model == 'HeteroscedasticStudent':
