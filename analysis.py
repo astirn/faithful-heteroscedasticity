@@ -9,7 +9,7 @@ import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
 
-HOMOSCEDASTIC_MODELS = ('Unit Variance',)
+MEAN_ONLY = 'Unit Variance Normal'
 HETEROSCEDASTIC_MODELS = (
     # Normal models
     'Heteroscedastic Normal',
@@ -21,7 +21,7 @@ HETEROSCEDASTIC_MODELS = (
     'Heteroscedastic Student',
     'Faithful Heteroscedastic Student'
 )
-MODELS = HOMOSCEDASTIC_MODELS + HETEROSCEDASTIC_MODELS
+MODELS = (MEAN_ONLY,) + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 
 
@@ -75,14 +75,14 @@ def analyze_performance(measurements, dataset, alpha=0.05, ece_method='two-sided
 
     # identify unfaithful models
     unfaithful_models = []
-    null_squared_errors = measurements.loc[('Unit Variance',), 'squared errors']
+    null_squared_errors = measurements.loc[(MEAN_ONLY,), 'squared errors']
     for index in measurements.index.unique():
         squared_errors = measurements.loc[index, 'squared errors']
         if stats.ttest_rel(squared_errors, null_squared_errors, alternative='greater')[1] < alpha:
             unfaithful_models += [index]
 
     # exclude any unfaithful model from our candidates list
-    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~(rmse.index.get_level_values('Model') == 'Unit Variance')]
+    candidates = rmse[~rmse.index.isin(unfaithful_models) & ~(rmse.index.get_level_values('Model') == MEAN_ONLY)]
     candidates = candidates.index.unique()
 
     # finalize RMSE table
@@ -179,7 +179,7 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     if len(df_latex.index.names) == 1:
         index = index[0]
     df_latex.loc[index, :] = total_wins
-    df_latex.loc[index, 'Unit Variance'] = '--'
+    df_latex.loc[index, MEAN_ONLY] = '--'
 
     # style and save
     style = df_latex.style.hide(axis=1, names=True)

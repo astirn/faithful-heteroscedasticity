@@ -94,7 +94,7 @@ class Normal(Regression):
 class UnitVarianceNormal(Normal, ABC):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Normal.__init__(self, dim_x, f_trunk, name='UnitVariance', **kwargs)
+        Normal.__init__(self, dim_x, f_trunk, name='UnitVarianceNormal', **kwargs)
         self.model_class = 'Mean only'
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
