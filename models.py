@@ -204,7 +204,7 @@ class BetaNLL(HeteroscedasticNormal, ABC):
 
 class Ensemble(Regression):
 
-    def __init__(self, dim_x, f_trunk, m, **kwargs):
+    def __init__(self, *, dim_x, f_trunk=None, m, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
         self.m = m
 
