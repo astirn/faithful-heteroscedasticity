@@ -199,6 +199,44 @@ class BetaNLL(HeteroscedasticNormal, ABC):
         return params
 
 
+class Ensemble(Regression):
+
+    def __init__(self, dim_x, f_trunk, **kwargs):
+        Regression.__init__(self, dim_x, f_trunk, **kwargs)
+
+    def predictive_distribution(self, *, x=None, **params):
+        if params.keys() != {'loc', 'scale'}:
+            assert x is not None
+            params = self.call(x, training=False)
+            return tfpd.MixtureSameFamily(
+                mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(params['loc'])[-1])),
+                components_distribution=tfpd.Normal(**params))
+        else:
+            return tfpd.Normal(**params)
+
+
+class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
+
+    def __init__(self, *, dropout=0.2, m=1, **kwargs):
+        kwargs.update(dict(dropout=dropout))
+        Ensemble.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
+        HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
+        self.model_class = 'Monte Carlo Dropout'
+        self.m = m
+
+    def call(self, x, **kwargs):
+        if kwargs['training']:
+            z = self.f_trunk(x, training=True)
+            loc = self.f_mean(z, training=True)
+            scale = self.f_scale(z, training=True)
+        else:
+            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.m)], axis=0)
+            reshape_dims = tf.stack([self.m, tf.shape(x)[0], -1])
+            loc = tf.transpose(tf.reshape(self.f_mean(z, training=True), reshape_dims), [1, 2, 0])
+            scale = tf.transpose(tf.reshape(self.f_scale(z, training=True), reshape_dims), [1, 2, 0])
+        return {'loc': loc, 'scale': scale}
+
+
 class Student(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
@@ -350,6 +388,8 @@ if __name__ == '__main__':
         model = FaithfulHeteroscedasticNormal
     elif args.model == 'BetaNLL':
         model = BetaNLL
+    elif args.model == 'HeteroscedasticMonteCarloDropout':
+        model = HeteroscedasticMonteCarloDropout
     elif args.model == 'HeteroscedasticStudent':
         model = HeteroscedasticStudent
     elif args.model == 'FaithfulHeteroscedasticStudent':
