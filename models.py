@@ -201,8 +201,9 @@ class BetaNLL(HeteroscedasticNormal, ABC):
 
 class Ensemble(Regression):
 
-    def __init__(self, dim_x, f_trunk, **kwargs):
+    def __init__(self, dim_x, f_trunk, m, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
+        self.m = m
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'loc', 'scale'}:
@@ -217,12 +218,11 @@ class Ensemble(Regression):
 
 class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
 
-    def __init__(self, *, dropout=0.2, m=1, **kwargs):
-        kwargs.update(dict(dropout=dropout))
+    def __init__(self, *, dropout=0.2, m=100, **kwargs):
+        kwargs.update(dict(dropout=dropout, m=m))
         Ensemble.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
         HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
         self.model_class = 'Monte Carlo Dropout'
-        self.m = m
 
     def call(self, x, **kwargs):
         if kwargs['training']:
