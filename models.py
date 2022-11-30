@@ -20,9 +20,12 @@ tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU'
 
 def f_hidden_layers(d_in, d_hidden, **kwargs):
     assert isinstance(d_hidden, (list, tuple)) and all(isinstance(d, int) for d in d_hidden)
+    dropout = kwargs.get('dropout')
     nn = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(d_in)], name=kwargs.get('name'))
     for d in d_hidden:
         nn.add(tf.keras.layers.Dense(d, activation='elu'))
+        if dropout is not None:
+            nn.add(tf.keras.layers.Dropout(rate=dropout))
     return nn
 
 
