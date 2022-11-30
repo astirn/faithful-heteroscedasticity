@@ -377,14 +377,14 @@ if __name__ == '__main__':
     toy_data = generate_toy_data()
 
     # pick the appropriate model
-    if args.model == 'UnitVarianceGaussian':
+    if args.model == 'UnitVarianceNormal':
         args.architecture = 'single'
         model = UnitVarianceNormal
-    elif args.model == 'HeteroscedasticGaussian':
+    elif args.model == 'HeteroscedasticNormal':
         model = HeteroscedasticNormal
     elif args.model == 'SecondOrderMean':
         model = SecondOrderMean
-    elif args.model == 'FaithfulHeteroscedasticGaussian':
+    elif args.model == 'FaithfulHeteroscedasticNormal':
         model = FaithfulHeteroscedasticNormal
     elif args.model == 'BetaNLL':
         model = BetaNLL
