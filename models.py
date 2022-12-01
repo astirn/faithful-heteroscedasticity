@@ -206,10 +206,9 @@ class BetaNLL(HeteroscedasticNormal, ABC):
 
 class MonteCarloDropout(Regression):
 
-    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.005, mc_samples=100, **kwargs):
+    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.005, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
         self.dropout_rate = dropout_rate
-        self.mc_samples = mc_samples
 
     @property
     def model_class(self):
