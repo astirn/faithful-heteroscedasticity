@@ -1,4 +1,5 @@
 import argparse
+import copy
 import os
 
 import numpy as np
@@ -346,13 +347,14 @@ def get_models_and_configurations(nn_kwargs):
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
     ]
 
-    # Monte Carlo Dropout models
-    if 'd_hidden' in nn_kwargs.keys() and len(nn_kwargs.get('d_hidden')) == 1:  # these need at least 2 layer to work
-        nn_kwargs.update(dict(d_hidden=2 * nn_kwargs['d_hidden']))
+    # Monte Carlo Dropout models (these need at least 2 layer to work)
+    mc_nn_kwargs = copy.deepcopy(nn_kwargs)
+    if 'd_hidden' in mc_nn_kwargs.keys() and len(mc_nn_kwargs.get('d_hidden')) == 1:
+        mc_nn_kwargs.update(dict(d_hidden=2 * mc_nn_kwargs['d_hidden']))
     models += [
-        dict(model=UnitVarianceMonteCarloDropout, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=HeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=UnitVarianceMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mc_nn_kwargs),
+        dict(model=HeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mc_nn_kwargs),
+        dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mc_nn_kwargs),
     ]
 
     return models
