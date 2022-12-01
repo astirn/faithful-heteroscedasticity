@@ -252,14 +252,9 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
         HeteroscedasticNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
-        if kwargs['training']:
-            z = self.f_trunk(x, training=True)
-            loc = tf.expand_dims(self.f_mean(z, training=True), axis=0)
-            scale = tf.expand_dims(self.f_scale(z, training=True), axis=0)
-        else:
-            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
-            loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
-            scale = tf.reshape(self.f_scale(z, training=True), self.reshape_dims(x))
+        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
+        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
+        scale = tf.reshape(self.f_scale(z, training=True), self.reshape_dims(x))
         return {'loc': loc, 'scale': scale}
 
 
@@ -338,6 +333,7 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
 
 def get_models_and_configurations(nn_kwargs):
     return [
+        # Normal models
         dict(model=UnitVarianceNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=HeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
