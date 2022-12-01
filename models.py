@@ -215,6 +215,9 @@ class MonteCarloDropout(Regression):
     def model_class(self):
         return 'Monte Carlo Dropout'
 
+    def reshape_dims(self, x):
+        return tf.stack([self.mc_samples, tf.shape(x)[0], -1])
+
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'loc', 'scale'}:
             assert x is not None
@@ -235,7 +238,8 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
         UnitVarianceNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
-        loc = tf.stack([self.f_mean(self.f_trunk(x, training=True), training=True) for _ in range(self.mc_samples)])
+        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
+        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
         return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
 
 
@@ -246,9 +250,6 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
         MonteCarloDropout.__init__(self, name=name, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         HeteroscedasticNormal.__init__(self, name=name, **kwargs)
-
-    def reshape_dims(self, x):
-        return tf.stack([self.mc_samples, tf.shape(x)[0], -1])
 
     def call(self, x, **kwargs):
         if kwargs['training']:
