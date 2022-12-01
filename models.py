@@ -206,7 +206,7 @@ class BetaNLL(HeteroscedasticNormal, ABC):
 
 class MonteCarloDropout(Regression):
 
-    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.005, **kwargs):
+    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.25, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
         self.dropout_rate = dropout_rate
 
@@ -216,7 +216,7 @@ class MonteCarloDropout(Regression):
 
     @staticmethod
     def mc_samples(training, **kwargs):
-        return 100 if training else 1000
+        return 10 if training else 1000
 
     def reshape_dims(self, x, training, **kwargs):
         return tf.stack([self.mc_samples(training), tf.shape(x)[0], -1])
