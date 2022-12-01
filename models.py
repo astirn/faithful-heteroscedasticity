@@ -222,12 +222,24 @@ class MonteCarloDropout(Regression):
     def reshape_dims(self, x, training, **kwargs):
         return tf.stack([self.mc_samples(training), tf.shape(x)[0], -1])
 
+    def predict_step(self, x):
+        params = self.call(x, training=False)
+        params['loc'] = tf.transpose(params['loc'], [1, 0, 2])
+        params['scale'] = tf.transpose(params['scale'], [1, 0, 2])
+        params['batch_lead'] = tf.constant([True], dtype=tf.bool)
+        return params
+
     def predictive_distribution(self, *, x=None, **params):
-        if params.keys() != {'loc', 'scale'}:
+        if not {'loc', 'scale'}.issubset(set(params.keys())):
             assert x is not None
             params = self.call(x, training=False)
-        params['loc'] = tf.transpose(params['loc'], [1, 2, 0])
-        params['scale'] = tf.transpose(params['scale'], [1, 2, 0])
+        if 'batch_lead' in params.keys():
+            params.pop('batch_lead')
+            params['loc'] = tf.transpose(params['loc'], [0, 2, 1])
+            params['scale'] = tf.transpose(params['scale'], [0, 2, 1])
+        else:
+            params['loc'] = tf.transpose(params['loc'], [1, 2, 0])
+            params['scale'] = tf.transpose(params['scale'], [1, 2, 0])
         return tfpd.MixtureSameFamily(
             mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(params['loc'])[-1])),
             components_distribution=tfpd.Normal(**params))

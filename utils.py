@@ -22,12 +22,8 @@ class ZScoreNormalization(object):
             return value * self.y_std
         elif name == 'var':
             return value * self.y_var
-        elif name == 'df':
-            return value
-        elif name == 'y':
-            return value
         else:
-            raise NotImplementedError
+            return value
 
 
 def pretty_model_name(model, model_kwargs):
