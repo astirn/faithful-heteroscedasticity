@@ -201,11 +201,16 @@ class BetaNLL(HeteroscedasticNormal, ABC):
         return params
 
 
-class Ensemble(tf.keras.Model):
+class MonteCarloDropout(Regression):
 
-    def __init__(self, *, m, **kwargs):
-        tf.keras.Model.__init__(self, name=kwargs['name'])
-        self.m = m
+    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.005, mc_samples=1000, **kwargs):
+        Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
+        self.dropout_rate = dropout_rate
+        self.mc_samples = mc_samples
+
+    @property
+    def model_class(self):
+        return 'Monte Carlo Dropout'
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'loc', 'scale'}:
@@ -218,31 +223,27 @@ class Ensemble(tf.keras.Model):
             components_distribution=tfpd.Normal(**params))
 
 
-class UnitVarianceMonteCarloDropout(Ensemble, UnitVarianceNormal, ABC):
+class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 
-    def __init__(self, *, dropout=0.005, m=1000, **kwargs):
+    def __init__(self, **kwargs):
         name = 'UnitVarianceMonteCarloDropout'
-        kwargs.update(dict(dropout=dropout))
-        Ensemble.__init__(self, m=m, name=name)
-        UnitVarianceNormal.__init__(self, name=name, **kwargs)
-        self.model_class = 'Monte Carlo Dropout'
+        MonteCarloDropout.__init__(self, name=name, **kwargs)
+        UnitVarianceNormal.__init__(self, dropout_rate=self.dropout_rate, name=name, **kwargs)
 
     def call(self, x, **kwargs):
         if kwargs['training']:
             loc = tf.expand_dims(self.f_mean(self.f_trunk(x, training=True), training=True), axis=0)
         else:
-            loc = tf.stack([self.f_mean(self.f_trunk(x, training=True), training=True) for _ in range(self.m)])
+            loc = tf.stack([self.f_mean(self.f_trunk(x, training=True), training=True) for _ in range(self.mc_samples)])
         return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
 
 
-class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
+class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal, ABC):
 
-    def __init__(self, *, dropout=0.005, m=1000, **kwargs):
-        kwargs.update(dict(dropout=dropout))
+    def __init__(self, **kwargs):
         name = kwargs.pop('name', 'HeteroscedasticMonteCarloDropout')
-        Ensemble.__init__(self, m=m, name=name)
-        HeteroscedasticNormal.__init__(self, name=name, **kwargs)
-        self.model_class = 'Monte Carlo Dropout'
+        MonteCarloDropout.__init__(self, name=name, **kwargs)
+        HeteroscedasticNormal.__init__(self, dropout_rate=self.dropout_rate, name=name, **kwargs)
 
     def call(self, x, **kwargs):
         if kwargs['training']:
@@ -250,8 +251,8 @@ class HeteroscedasticMonteCarloDropout(Ensemble, HeteroscedasticNormal, ABC):
             loc = tf.expand_dims(self.f_mean(z, training=True), axis=0)
             scale = tf.expand_dims(self.f_scale(z, training=True), axis=0)
         else:
-            reshape_dims = tf.stack([self.m, tf.shape(x)[0], -1])
-            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.m)], axis=0)
+            reshape_dims = tf.stack([self.mc_samples, tf.shape(x)[0], -1])
+            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
             loc = tf.reshape(self.f_mean(z, training=True), reshape_dims)
             scale = tf.reshape(self.f_scale(z, training=True), reshape_dims)
         return {'loc': loc, 'scale': scale}
