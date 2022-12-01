@@ -20,12 +20,12 @@ tf.config.experimental.set_visible_devices(tf.config.list_physical_devices('GPU'
 
 def f_hidden_layers(d_in, d_hidden, **kwargs):
     assert isinstance(d_hidden, (list, tuple)) and all(isinstance(d, int) for d in d_hidden)
-    dropout = kwargs.get('dropout')
+    dropout_rate = kwargs.get('dropout_rate')
     nn = tf.keras.Sequential(layers=[tf.keras.layers.InputLayer(d_in)], name=kwargs.get('name'))
     for d in d_hidden:
         nn.add(tf.keras.layers.Dense(d, activation='elu'))
-        if dropout is not None:
-            nn.add(tf.keras.layers.Dropout(rate=dropout))
+        if dropout_rate is not None:
+            nn.add(tf.keras.layers.Dropout(rate=dropout_rate))
     return nn
 
 
@@ -85,7 +85,10 @@ class Normal(Regression):
 
     def __init__(self, dim_x, f_trunk, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, **kwargs)
-        self.model_class = 'Normal'
+
+    @property
+    def model_class(self):
+        return 'Normal'
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'loc', 'scale'}:
