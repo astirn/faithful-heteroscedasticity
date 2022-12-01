@@ -231,7 +231,8 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
     def __init__(self, **kwargs):
         name = kwargs.pop('name', 'UnitVarianceMonteCarloDropout')
         MonteCarloDropout.__init__(self, name=name, **kwargs)
-        UnitVarianceNormal.__init__(self, dropout_rate=self.dropout_rate, name=name, **kwargs)
+        kwargs.update(dict(dropout_rate=self.dropout_rate))
+        UnitVarianceNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
         if kwargs['training']:
@@ -246,7 +247,8 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
     def __init__(self, **kwargs):
         name = kwargs.pop('name', 'HeteroscedasticMonteCarloDropout')
         MonteCarloDropout.__init__(self, name=name, **kwargs)
-        HeteroscedasticNormal.__init__(self, dropout_rate=self.dropout_rate, name=name, **kwargs)
+        kwargs.update(dict(dropout_rate=self.dropout_rate))
+        HeteroscedasticNormal.__init__(self, name=name, **kwargs)
 
     def reshape_dims(self, x):
         return tf.stack([self.mc_samples, tf.shape(x)[0], -1])
@@ -268,7 +270,8 @@ class FaithfulHeteroscedasticMonteCarloDropout(HeteroscedasticMonteCarloDropout,
     def __init__(self, **kwargs):
         name = kwargs.pop('name', 'FaithfulHeteroscedasticMonteCarloDropout')
         HeteroscedasticMonteCarloDropout.__init__(self, name=name, **kwargs)
-        FaithfulHeteroscedasticNormal.__init__(self, dropout_rate=self.dropout_rate, name=name, **kwargs)
+        kwargs.update(dict(dropout_rate=self.dropout_rate))
+        FaithfulHeteroscedasticNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
         if kwargs['training']:
@@ -411,7 +414,8 @@ if __name__ == '__main__':
     parser.add_argument('--architecture', type=str, default='separate', help='network architecture')
     parser.add_argument('--beta', type=float, default=0.5, help='beta setting for BetaNLL')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--model', type=str, default='FaithfulHeteroscedastic', help='which model to use')
+    parser.add_argument('--dropout_rate', type=float, default=0.02, help='Monte Carlo Dropout rate')
+    parser.add_argument('--model', type=str, default='FaithfulHeteroscedasticNormal', help='which model to use')
     parser.add_argument('--seed', type=int, default=12345, help='random number seed for reproducibility')
     args = parser.parse_args()
 
@@ -448,7 +452,7 @@ if __name__ == '__main__':
     assert args.architecture in {'single', 'separate', 'shared'}
 
     # declare model instance
-    config = dict(d_hidden=(50,), beta=args.beta)
+    config = dict(d_hidden=(50,), beta=args.beta, dropout_rate=args.dropout_rate)
     if args.architecture in {'single', 'shared'}:
         model = model(dim_x=1, dim_y=1, f_trunk=f_hidden_layers, f_param=f_output_layer, **config)
     else:
