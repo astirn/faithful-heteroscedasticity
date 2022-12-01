@@ -211,7 +211,7 @@ def print_tables(df, experiment, non_config_indices=('Model',)):
 
         # print metric tables
         suffix = [] if len(configurations) == 1 else ['-'.join(config).replace(' ', '')]
-        for metrics in [['RMSE', 'ECE', 'LL'], ['RMSE', 'ECE'], ['LL']]:
+        for metrics in [['RMSE', 'ECE', 'LL']]:
             file_name = '_'.join([experiment] + [m.lower() for m in metrics] + suffix) + '.tex'
             print_table(df_config[['Dataset'] + metrics].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
 
