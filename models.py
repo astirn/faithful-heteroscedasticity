@@ -206,7 +206,7 @@ class BetaNLL(HeteroscedasticNormal, ABC):
 
 class MonteCarloDropout(Regression):
 
-    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.005, mc_samples=1000, **kwargs):
+    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.02, mc_samples=100, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
         self.dropout_rate = dropout_rate
         self.mc_samples = mc_samples
@@ -274,14 +274,14 @@ class FaithfulHeteroscedasticMonteCarloDropout(HeteroscedasticMonteCarloDropout,
         FaithfulHeteroscedasticNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
-        if kwargs['training']:
-            z = self.f_trunk(x, training=True)
-            loc = tf.expand_dims(self.f_mean(z, training=True), axis=0)
-            scale = tf.expand_dims(self.f_scale(tf.stop_gradient(z), training=True), axis=0)
-        else:
-            z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
-            loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
-            scale = tf.reshape(self.f_scale(tf.stop_gradient(z), training=True), self.reshape_dims(x))
+        # if kwargs['training']:
+        #     z = self.f_trunk(x, training=True)
+        #     loc = tf.expand_dims(self.f_mean(z, training=True), axis=0)
+        #     scale = tf.expand_dims(self.f_scale(tf.stop_gradient(z), training=True), axis=0)
+        # else:
+        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
+        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
+        scale = tf.reshape(self.f_scale(tf.stop_gradient(z), training=True), self.reshape_dims(x))
         return {'loc': loc, 'scale': scale}
 
 
@@ -414,7 +414,6 @@ if __name__ == '__main__':
     parser.add_argument('--architecture', type=str, default='separate', help='network architecture')
     parser.add_argument('--beta', type=float, default=0.5, help='beta setting for BetaNLL')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--dropout_rate', type=float, default=0.005, help='Monte Carlo Dropout rate')
     parser.add_argument('--model', type=str, default='FaithfulHeteroscedasticNormal', help='which model to use')
     parser.add_argument('--seed', type=int, default=12345, help='random number seed for reproducibility')
     args = parser.parse_args()
@@ -452,7 +451,7 @@ if __name__ == '__main__':
     assert args.architecture in {'single', 'separate', 'shared'}
 
     # declare model instance
-    config = dict(d_hidden=(50,), beta=args.beta, dropout_rate=args.dropout_rate)
+    config = dict(d_hidden=(50,), beta=args.beta)
     if args.architecture in {'single', 'shared'}:
         model = model(dim_x=1, dim_y=1, f_trunk=f_hidden_layers, f_param=f_output_layer, **config)
     else:
@@ -467,9 +466,8 @@ if __name__ == '__main__':
     ])
 
     # train model
-    epochs = int(60e3) if model.model_class == 'Monte Carlo Dropout' else int(30e3)
     hist = model.fit(x=toy_data['x_train'], y=toy_data['y_train'],
-                     batch_size=toy_data['x_train'].shape[0], epochs=epochs, verbose=0,
+                     batch_size=toy_data['x_train'].shape[0], epochs=int(30e3), verbose=0,
                      callbacks=[RegressionCallback(validation_freq=500, early_stop_patience=0)])
 
     # evaluate predictive model
