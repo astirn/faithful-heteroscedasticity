@@ -335,8 +335,9 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
 
 
 def get_models_and_configurations(nn_kwargs):
-    return [
-        # Normal models
+
+    # Normal models
+    models = [
         dict(model=UnitVarianceNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=HeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
@@ -344,6 +345,17 @@ def get_models_and_configurations(nn_kwargs):
         dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
     ]
+
+    # Monte Carlo Dropout models
+    if 'd_hidden' in nn_kwargs.keys() and len(nn_kwargs.get('d_hidden')) == 1:  # these need at least 2 layer to work
+        nn_kwargs.update(dict(d_hidden=2 * nn_kwargs['d_hidden']))
+    models += [
+        dict(model=UnitVarianceMonteCarloDropout, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=HeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+    ]
+
+    return models
 
 
 def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean, predicted_std, plot_title):
