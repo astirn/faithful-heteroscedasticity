@@ -231,7 +231,7 @@ def uci_tables(model_class, normalized=True):
             df = pd.concat([df, analyze_performance(measurements, dataset)])
 
     # print the tables
-    print_tables(df, 'uci_' + model_class)
+    print_tables(df, 'uci_' + model_class.replace(' ', '_'))
 
 
 def vae_tables():
@@ -336,7 +336,7 @@ def toy_convergence_plots(model_class):
     ax[0, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     ax[1, -1].legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Epoch')
     plt.tight_layout()
-    fig.savefig(os.path.join('results', 'toy_convergence_' + model_class + '.pdf'))
+    fig.savefig(os.path.join('results', 'toy_convergence_' + model_class.replace(' ', '_') + '.pdf'))
 
 
 def vae_plots(examples_per_class=1):
