@@ -414,7 +414,7 @@ if __name__ == '__main__':
     parser.add_argument('--architecture', type=str, default='separate', help='network architecture')
     parser.add_argument('--beta', type=float, default=0.5, help='beta setting for BetaNLL')
     parser.add_argument('--debug', action='store_true', default=False, help='run eagerly')
-    parser.add_argument('--dropout_rate', type=float, default=0.02, help='Monte Carlo Dropout rate')
+    parser.add_argument('--dropout_rate', type=float, default=0.005, help='Monte Carlo Dropout rate')
     parser.add_argument('--model', type=str, default='FaithfulHeteroscedasticNormal', help='which model to use')
     parser.add_argument('--seed', type=int, default=12345, help='random number seed for reproducibility')
     args = parser.parse_args()
