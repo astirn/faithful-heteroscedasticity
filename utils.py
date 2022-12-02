@@ -29,8 +29,8 @@ class ZScoreNormalization(object):
 def pretty_model_name(model, model_kwargs):
     name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
     name = name.replace('N L L', 'NLL')
-    if len(model_kwargs) > 0:
-        name = name + ' (' + ', '.join([str(v) for v in model_kwargs.values()]) + ')'
+    if 'beta' in model_kwargs.keys():
+        name = name + ' (' + str(model_kwargs['beta']) + ')'
     return name
 
 
