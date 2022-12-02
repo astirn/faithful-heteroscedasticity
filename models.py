@@ -302,28 +302,6 @@ class Student(tf.keras.Model):
     def model_class(self):
         return 'Student'
 
-    def predictive_distribution(self, *, x=None, **params):
-        if params.keys() != {'df', 'loc', 'scale'}:
-            assert x is not None
-            params = self.call(x, training=False)
-        return tfpd.StudentT(**params)
-
-
-class HeteroscedasticStudent(Student, Regression):
-
-    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Student.__init__(self)
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
-        self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
-        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
-        self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
-
-    def call(self, x, **kwargs):
-        z = self.f_trunk(x, **kwargs)
-        return {'df': self.min_df + self.f_df(z, **kwargs),
-                'loc': self.f_loc(z, **kwargs),
-                'scale': self.f_scale(z, **kwargs)}
-
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
@@ -332,6 +310,40 @@ class HeteroscedasticStudent(Student, Regression):
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
         return params
+
+    def predictive_distribution(self, *, x=None, **params):
+        if params.keys() != {'df', 'loc', 'scale'}:
+            assert x is not None
+            params = self.call(x, training=False)
+        return tfpd.StudentT(**params)
+
+
+class UnitVarianceStudent(Student, Regression):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        Student.__init__(self)
+        Regression.__init__(self, dim_x, f_trunk, name='UnitVarianceStudent', **kwargs)
+        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
+
+    def call(self, x, **kwargs):
+        loc = self.f_loc(self.f_trunk(x, **kwargs), **kwargs)
+        return {'df': self.min_df * tf.ones(tf.shape(loc)), 'loc': loc, 'scale': tf.ones(tf.shape(loc))}
+
+
+class HeteroscedasticStudent(Student, Regression):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        Student.__init__(self)
+        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
+        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
+        self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
+        self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
+
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        return {'df': self.min_df + self.f_df(z, **kwargs),
+                'loc': self.f_loc(z, **kwargs),
+                'scale': self.f_scale(z, **kwargs)}
 
 
 class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
@@ -345,8 +357,8 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
             df = self.min_df + self.f_df(tf.stop_gradient(z), training=True)
             loc = self.f_loc(z, training=True)
             scale = self.f_scale(tf.stop_gradient(z), training=True)
-            py_loc = tfpd.Independent(tfpd.Normal(loc=loc, scale=1.0), reinterpreted_batch_ndims=1)
-            py_std = tfpd.Independent(tfpd.StudentT(df, tf.stop_gradient(loc), scale), reinterpreted_batch_ndims=1)
+            py_loc = tfpd.Independent(tfpd.StudentT(df=self.min_df, loc=loc, scale=1.0), 1)
+            py_std = tfpd.Independent(tfpd.StudentT(df, tf.stop_gradient(loc), scale), 1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
