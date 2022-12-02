@@ -391,6 +391,13 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
             dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
         ]
 
+    # Student models
+    models += [
+        dict(model=UnitVarianceStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=HeteroscedasticStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedasticStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+    ]
+
     return models
 
 
@@ -482,6 +489,8 @@ if __name__ == '__main__':
         model = HeteroscedasticMonteCarloDropout
     elif args.model == 'FaithfulHeteroscedasticMonteCarloDropout':
         model = FaithfulHeteroscedasticMonteCarloDropout
+    elif args.model == 'UnitVarianceStudent':
+        model = UnitVarianceStudent
     elif args.model == 'HeteroscedasticStudent':
         model = HeteroscedasticStudent
     elif args.model == 'FaithfulHeteroscedasticStudent':
