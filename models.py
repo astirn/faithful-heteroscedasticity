@@ -351,18 +351,21 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
     def __init__(self, **kwargs):
         HeteroscedasticStudent.__init__(self, name='FaithfulHeteroscedasticStudent', **kwargs)
 
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        return {'df': self.min_df + self.f_df(tf.stop_gradient(z), **kwargs),
+                'loc': self.f_loc(z, **kwargs),
+                'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
+
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
-            z = self.f_trunk(x, training=True)
-            df = self.min_df + self.f_df(tf.stop_gradient(z), training=True)
-            loc = self.f_loc(z, training=True)
-            scale = self.f_scale(tf.stop_gradient(z), training=True)
-            py_loc = tfpd.Independent(tfpd.StudentT(df=self.min_df, loc=loc, scale=1.0), 1)
-            py_std = tfpd.Independent(tfpd.StudentT(df, tf.stop_gradient(loc), scale), 1)
+            params = self.call(x, training=True)
+            py_loc = tfpd.Independent(tfpd.StudentT(df=self.min_df, loc=params['loc'], scale=1.0), 1)
+            py_std = tfpd.Independent(tfpd.StudentT(params['df'], tf.stop_gradient(params['loc']), params['scale']), 1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return {'df': df, 'loc': loc, 'scale': scale}
+        return params
 
 
 def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
