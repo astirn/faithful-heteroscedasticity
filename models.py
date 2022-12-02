@@ -472,7 +472,7 @@ if __name__ == '__main__':
     assert args.architecture in {'single', 'separate', 'shared'}
 
     # declare model instance
-    config = dict(d_hidden=(50,), beta=args.beta)
+    config = dict(d_hidden=(50,) * (2 if 'MonteCarloDropout' in args.model else 1), beta=args.beta)
     if args.architecture in {'single', 'shared'}:
         model = model(dim_x=1, dim_y=1, f_trunk=f_hidden_layers, f_param=f_output_layer, **config)
     else:
