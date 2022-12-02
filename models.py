@@ -292,11 +292,15 @@ class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHetero
         return {'loc': loc, 'scale': scale}
 
 
-class Student(Regression):
+class Student(tf.keras.Model):
 
-    def __init__(self, dim_x, f_trunk, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, **kwargs)
-        self.model_class = 'Student'
+    def __init__(self):
+        tf.keras.Model.__init__(self)
+        self.min_df = 3
+
+    @property
+    def model_class(self):
+        return 'Student'
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'df', 'loc', 'scale'}:
@@ -305,12 +309,11 @@ class Student(Regression):
         return tfpd.StudentT(**params)
 
 
-class HeteroscedasticStudent(Student):
+class HeteroscedasticStudent(Student, Regression):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Student.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
-
-        self.min_df = 3
+        Student.__init__(self)
+        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
         self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
         self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
