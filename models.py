@@ -341,9 +341,10 @@ class HeteroscedasticStudent(Student, Regression):
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
-        return {'df': self.min_df + self.f_df(z, **kwargs),
-                'loc': self.f_loc(z, **kwargs),
-                'scale': self.f_scale(z, **kwargs)}
+        df = self.min_df + self.f_df(z, **kwargs)
+        loc = self.f_loc(z, **kwargs)
+        scale = self.f_scale(z, **kwargs)
+        return {'df': df, 'loc': loc, 'scale': tf.clip_by_value(scale, 1e-9, np.inf)}
 
 
 class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
@@ -353,9 +354,10 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
-        return {'df': self.min_df + self.f_df(tf.stop_gradient(z), **kwargs),
-                'loc': self.f_loc(z, **kwargs),
-                'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
+        df = self.min_df + self.f_df(tf.stop_gradient(z), **kwargs)
+        loc = self.f_loc(z, **kwargs)
+        scale = self.f_scale(tf.stop_gradient(z), **kwargs)
+        return {'df': df, 'loc': loc, 'scale': tf.clip_by_value(scale, 1e-9, np.inf)}
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
