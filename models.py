@@ -204,10 +204,31 @@ class BetaNLL(HeteroscedasticNormal, ABC):
         return params
 
 
-class MonteCarloDropout(Regression):
+class NormalMixture(Regression):
 
-    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.25, mc_samples=10, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
+    def __init__(self, *, dim_x, f_trunk=None, **kwargs):
+        Regression.__init__(self, dim_x, f_trunk, **kwargs)
+
+    def predictive_distribution(self, *, x=None, **params):
+        if not {'loc', 'scale'}.issubset(set(params.keys())):
+            assert x is not None
+            params = self.call(x, training=False)
+        if 'batch_lead' in params.keys():
+            params.pop('batch_lead')
+            params['loc'] = tf.transpose(params['loc'], [0, 2, 1])
+            params['scale'] = tf.transpose(params['scale'], [0, 2, 1])
+        else:
+            params['loc'] = tf.transpose(params['loc'], [1, 2, 0])
+            params['scale'] = tf.transpose(params['scale'], [1, 2, 0])
+        return tfpd.MixtureSameFamily(
+            mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(params['loc'])[-1])),
+            components_distribution=tfpd.Normal(**params))
+
+
+class MonteCarloDropout(NormalMixture):
+
+    def __init__(self, *, dropout_rate=0.25, mc_samples=10, **kwargs):
+        NormalMixture.__init__(self, dropout_rate=dropout_rate, **kwargs)
         self.dropout_rate = dropout_rate
         self.mc_samples = mc_samples
 
@@ -224,21 +245,6 @@ class MonteCarloDropout(Regression):
         params['scale'] = tf.transpose(params['scale'], [1, 0, 2])
         params['batch_lead'] = tf.constant([True], dtype=tf.bool)
         return params
-
-    def predictive_distribution(self, *, x=None, **params):
-        if not {'loc', 'scale'}.issubset(set(params.keys())):
-            assert x is not None
-            params = self.call(x, training=False)
-        if 'batch_lead' in params.keys():
-            params.pop('batch_lead')
-            params['loc'] = tf.transpose(params['loc'], [0, 2, 1])
-            params['scale'] = tf.transpose(params['scale'], [0, 2, 1])
-        else:
-            params['loc'] = tf.transpose(params['loc'], [1, 2, 0])
-            params['scale'] = tf.transpose(params['scale'], [1, 2, 0])
-        return tfpd.MixtureSameFamily(
-            mixture_distribution=tfpd.Categorical(logits=tf.ones(tf.shape(params['loc'])[-1])),
-            components_distribution=tfpd.Normal(**params))
 
 
 class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
