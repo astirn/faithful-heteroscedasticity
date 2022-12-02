@@ -1,5 +1,4 @@
 import argparse
-import copy
 import os
 
 import numpy as np
@@ -207,10 +206,10 @@ class BetaNLL(HeteroscedasticNormal, ABC):
 
 class MonteCarloDropout(Regression):
 
-    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.25, **kwargs):
+    def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.25, mc_samples=10, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
         self.dropout_rate = dropout_rate
-        self.mc_samples = 10
+        self.mc_samples = mc_samples
 
     @property
     def model_class(self):
@@ -344,7 +343,7 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
         return {'df': df, 'loc': loc, 'scale': scale}
 
 
-def get_models_and_configurations(nn_kwargs):
+def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
 
     # Normal models
     models = [
@@ -357,14 +356,15 @@ def get_models_and_configurations(nn_kwargs):
     ]
 
     # Monte Carlo Dropout models (these need at least 2 layer to work)
-    mc_nn_kwargs = copy.deepcopy(nn_kwargs)
-    if 'd_hidden' in mc_nn_kwargs.keys() and len(mc_nn_kwargs.get('d_hidden')) == 1:
-        mc_nn_kwargs.update(dict(d_hidden=2 * mc_nn_kwargs['d_hidden']))
-    models += [
-        dict(model=UnitVarianceMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mc_nn_kwargs),
-        dict(model=HeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mc_nn_kwargs),
-        dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mc_nn_kwargs),
-    ]
+    if mcd_kwargs is not None:
+        mcd_kwargs.update(nn_kwargs)
+        if 'd_hidden' in mcd_kwargs.keys() and len(mcd_kwargs.get('d_hidden')) == 1:
+            mcd_kwargs.update(dict(d_hidden=2 * mcd_kwargs['d_hidden']))
+        models += [
+            dict(model=UnitVarianceMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mcd_kwargs),
+            dict(model=HeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mcd_kwargs),
+            dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=dict(), nn_kwargs=mcd_kwargs),
+        ]
 
     return models
 
