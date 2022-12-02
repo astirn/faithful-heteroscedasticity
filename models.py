@@ -275,7 +275,7 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
         loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
         scale = tf.reshape(self.f_scale(z, training=True), self.reshape_dims(x))
-        return {'loc': loc, 'scale': scale}
+        return {'loc': loc, 'scale': tf.clip_by_value(scale, 1e-9, np.inf)}
 
 
 class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHeteroscedasticNormal):
@@ -289,7 +289,7 @@ class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHetero
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
         loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
         scale = tf.reshape(self.f_scale(tf.stop_gradient(z), training=True), self.reshape_dims(x))
-        return {'loc': loc, 'scale': scale}
+        return {'loc': loc, 'scale': tf.clip_by_value(scale, 1e-9, np.inf)}
 
 
 class Student(tf.keras.Model):
