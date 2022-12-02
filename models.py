@@ -81,14 +81,14 @@ class Regression(tf.keras.Model):
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
 
-class Normal(object):
+class Normal(tf.keras.Model):
+
+    def __init__(self):
+        tf.keras.Model.__init__(self)
 
     @property
     def model_class(self):
         return 'Normal'
-
-    def call(self, x, **kwargs):
-        raise NotImplementedError
 
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'loc', 'scale'}:
@@ -97,11 +97,11 @@ class Normal(object):
         return tfpd.Normal(**params)
 
 
-class UnitVarianceNormal(Regression, Normal):
+class UnitVarianceNormal(Normal, Regression):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'UnitVarianceNormal'), **kwargs)
         Normal.__init__(self)
+        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'UnitVarianceNormal'), **kwargs)
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
 
     def call(self, x, **kwargs):
@@ -118,11 +118,11 @@ class UnitVarianceNormal(Regression, Normal):
         return params
 
 
-class HeteroscedasticNormal(Regression, Normal):
+class HeteroscedasticNormal(Normal, Regression):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
         Normal.__init__(self)
+        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
