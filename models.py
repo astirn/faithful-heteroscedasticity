@@ -210,17 +210,14 @@ class MonteCarloDropout(Regression):
     def __init__(self, *, dim_x, f_trunk=None, dropout_rate=0.25, **kwargs):
         Regression.__init__(self, dim_x, f_trunk, dropout_rate=dropout_rate, **kwargs)
         self.dropout_rate = dropout_rate
+        self.mc_samples = 10
 
     @property
     def model_class(self):
         return 'Monte Carlo Dropout'
 
-    @staticmethod
-    def mc_samples(training, **kwargs):
-        return 10 if training else 1000
-
-    def reshape_dims(self, x, training, **kwargs):
-        return tf.stack([self.mc_samples(training), tf.shape(x)[0], -1])
+    def reshape_dims(self, x):
+        return tf.stack([self.mc_samples, tf.shape(x)[0], -1])
 
     def predict_step(self, x):
         params = self.call(x, training=False)
@@ -254,8 +251,8 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
         UnitVarianceNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
-        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples(**kwargs))], axis=0)
-        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x, **kwargs))
+        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
+        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
         return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
 
 
@@ -268,9 +265,9 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
         HeteroscedasticNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
-        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples(**kwargs))], axis=0)
-        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x, **kwargs))
-        scale = tf.reshape(self.f_scale(z, training=True), self.reshape_dims(x, **kwargs))
+        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
+        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
+        scale = tf.reshape(self.f_scale(z, training=True), self.reshape_dims(x))
         return {'loc': loc, 'scale': scale}
 
 
@@ -283,9 +280,9 @@ class FaithfulHeteroscedasticMonteCarloDropout(HeteroscedasticMonteCarloDropout,
         FaithfulHeteroscedasticNormal.__init__(self, name=name, **kwargs)
 
     def call(self, x, **kwargs):
-        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples(**kwargs))], axis=0)
-        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x, **kwargs))
-        scale = tf.reshape(self.f_scale(tf.stop_gradient(z), training=True), self.reshape_dims(x, **kwargs))
+        z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
+        loc = tf.reshape(self.f_mean(z, training=True), self.reshape_dims(x))
+        scale = tf.reshape(self.f_scale(tf.stop_gradient(z), training=True), self.reshape_dims(x))
         return {'loc': loc, 'scale': scale}
 
 
