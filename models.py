@@ -208,10 +208,10 @@ class BetaNLL(HeteroscedasticNormal):
         return params
 
 
-class NormalMixture(Regression):
+class NormalMixture(tf.keras.Model):
 
-    def __init__(self, *, dim_x, f_trunk=None, **kwargs):
-        Regression.__init__(self, dim_x, f_trunk, **kwargs)
+    def __init__(self):
+        tf.keras.Model.__init__(self)
 
     def predictive_distribution(self, *, x=None, **params):
         if not {'loc', 'scale'}.issubset(set(params.keys())):
