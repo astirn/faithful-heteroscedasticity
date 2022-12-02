@@ -172,19 +172,21 @@ class SecondOrderMean(HeteroscedasticNormal, ABC):
 class FaithfulHeteroscedasticNormal(HeteroscedasticNormal, ABC):
 
     def __init__(self, **kwargs):
-        HeteroscedasticNormal.__init__(self, name='FaithfulHeteroscedasticNormal', **kwargs)
+        HeteroscedasticNormal.__init__(self, name=kwargs.pop('name', 'FaithfulHeteroscedasticNormal'), **kwargs)
+
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
-            z = self.f_trunk(x, training=True)
-            mean = self.f_mean(z, training=True)
-            std = self.f_scale(tf.stop_gradient(z), training=True)
-            py_loc = tfpd.Independent(tfpd.Normal(loc=mean, scale=1.0), reinterpreted_batch_ndims=1)
-            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(mean), scale=std), reinterpreted_batch_ndims=1)
+            params = self.call(x, training=True)
+            py_loc = tfpd.Independent(tfpd.Normal(loc=params['loc'], scale=1.0), 1)
+            py_std = tfpd.Independent(tfpd.Normal(loc=tf.stop_gradient(params['loc']), scale=params['scale']), 1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return {'loc': mean, 'scale': std}
+        return params
 
 
 class BetaNLL(HeteroscedasticNormal, ABC):
