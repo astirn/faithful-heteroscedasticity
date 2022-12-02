@@ -302,15 +302,6 @@ class Student(tf.keras.Model):
     def model_class(self):
         return 'Student'
 
-    def optimization_step(self, x, y):
-        with tf.GradientTape() as tape:
-            params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.StudentT(**params), reinterpreted_batch_ndims=1)
-            loss = -tf.reduce_mean(py_x.log_prob(y))
-            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
-        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return params
-
     def predictive_distribution(self, *, x=None, **params):
         if params.keys() != {'df', 'loc', 'scale'}:
             assert x is not None
@@ -323,11 +314,24 @@ class UnitVarianceStudent(Student, Regression):
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Student.__init__(self)
         Regression.__init__(self, dim_x, f_trunk, name='UnitVarianceStudent', **kwargs)
+        self.unit_variance_df = 100
+        self.unit_variance_scale = ((self.unit_variance_df - 2) / self.unit_variance_df) ** 0.5
         self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
 
     def call(self, x, **kwargs):
         loc = self.f_loc(self.f_trunk(x, **kwargs), **kwargs)
-        return {'df': self.min_df * tf.ones(tf.shape(loc)), 'loc': loc, 'scale': tf.ones(tf.shape(loc))}
+        df = self.unit_variance_df * tf.ones(tf.shape(loc))
+        scale = self.unit_variance_scale * tf.ones(tf.shape(loc))
+        return {'df': df, 'loc': loc, 'scale': scale}
+
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+            params = self.call(x, training=True)
+            py_x = tfpd.Independent(tfpd.Normal(loc=params['loc'], scale=1.0), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return params
 
 
 class HeteroscedasticStudent(Student, Regression):
@@ -346,6 +350,15 @@ class HeteroscedasticStudent(Student, Regression):
         scale = self.f_scale(z, **kwargs)
         return {'df': df, 'loc': loc, 'scale': tf.clip_by_value(scale, 1e-9, np.inf)}
 
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+            params = self.call(x, training=True)
+            py_x = tfpd.Independent(tfpd.StudentT(**params), reinterpreted_batch_ndims=1)
+            loss = -tf.reduce_mean(py_x.log_prob(y))
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return params
+
 
 class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
 
@@ -362,7 +375,7 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
-            py_loc = tfpd.Independent(tfpd.StudentT(df=self.min_df, loc=params['loc'], scale=1.0), 1)
+            py_loc = tfpd.Independent(tfpd.Normal(loc=params['loc'], scale=1.0), 1)
             py_std = tfpd.Independent(tfpd.StudentT(params['df'], tf.stop_gradient(params['loc']), params['scale']), 1)
             loss = -tf.reduce_mean(py_loc.log_prob(y) + py_std.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
