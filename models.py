@@ -232,7 +232,7 @@ class NormalMixture(Regression):
 class MonteCarloDropout(NormalMixture):
 
     def __init__(self, *, dropout_rate=0.25, mc_samples=10, **kwargs):
-        NormalMixture.__init__(self, dropout_rate=dropout_rate, **kwargs)
+        NormalMixture.__init__(self)
         self.dropout_rate = dropout_rate
         self.mc_samples = mc_samples
 
@@ -254,10 +254,9 @@ class MonteCarloDropout(NormalMixture):
 class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 
     def __init__(self, **kwargs):
-        name = kwargs.pop('name', 'UnitVarianceMonteCarloDropout')
-        MonteCarloDropout.__init__(self, name=name, **kwargs)
+        MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
-        UnitVarianceNormal.__init__(self, name=name, **kwargs)
+        UnitVarianceNormal.__init__(self, name='UnitVarianceMonteCarloDropout', **kwargs)
 
     def call(self, x, **kwargs):
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
@@ -268,10 +267,9 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        name = kwargs.pop('name', 'HeteroscedasticMonteCarloDropout')
-        MonteCarloDropout.__init__(self, name=name, **kwargs)
+        MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
-        HeteroscedasticNormal.__init__(self, name=name, **kwargs)
+        HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
 
     def call(self, x, **kwargs):
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
@@ -280,13 +278,12 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
         return {'loc': loc, 'scale': scale}
 
 
-class FaithfulHeteroscedasticMonteCarloDropout(HeteroscedasticMonteCarloDropout, FaithfulHeteroscedasticNormal):
+class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        name = kwargs.pop('name', 'FaithfulHeteroscedasticMonteCarloDropout')
-        HeteroscedasticMonteCarloDropout.__init__(self, name=name, **kwargs)
+        MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
-        FaithfulHeteroscedasticNormal.__init__(self, name=name, **kwargs)
+        FaithfulHeteroscedasticNormal.__init__(self, name='FaithfulHeteroscedasticMonteCarloDropout', **kwargs)
 
     def call(self, x, **kwargs):
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
@@ -308,7 +305,7 @@ class Student(Regression):
         return tfpd.StudentT(**params)
 
 
-class HeteroscedasticStudent(Student, ABC):
+class HeteroscedasticStudent(Student):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         Student.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
@@ -334,7 +331,7 @@ class HeteroscedasticStudent(Student, ABC):
         return params
 
 
-class FaithfulHeteroscedasticStudent(HeteroscedasticStudent, ABC):
+class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
 
     def __init__(self, **kwargs):
         HeteroscedasticStudent.__init__(self, name='FaithfulHeteroscedasticStudent', **kwargs)
