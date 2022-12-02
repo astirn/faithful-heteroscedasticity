@@ -78,7 +78,9 @@ for trial in range(1, args.num_trials + 1):
             # model configuration (seed and GPU determinism ensures architectures are identically initialized)
             tf.keras.utils.set_random_seed(fold_seed)
             model = mag['model'](dim_x=dim_x, dim_y=dim_y, **mag['model_kwargs'], **mag['nn_kwargs'])
-            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate), metrics=[RootMeanSquaredError()])
+            model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
+                          run_eagerly=args.debug,
+                          metrics=[RootMeanSquaredError()])
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
