@@ -9,7 +9,7 @@ import tensorflow as tf
 
 from callbacks import RegressionCallback
 from datasets import create_or_load_fold
-from metrics import RootMeanSquaredError
+from metrics import RootMeanSquaredError, MeanLogLikelihood
 from models import f_hidden_layers, f_output_layer, get_models_and_configurations
 from sklearn import preprocessing
 from utils import model_config_dir, model_config_index, pretty_model_name, ZScoreNormalization
@@ -80,7 +80,7 @@ for trial in range(1, args.num_trials + 1):
             model = mag['model'](dim_x=dim_x, dim_y=dim_y, **mag['model_kwargs'], **mag['nn_kwargs'])
             model.compile(optimizer=tf.keras.optimizers.Adam(args.learning_rate),
                           run_eagerly=args.debug,
-                          metrics=[RootMeanSquaredError()])
+                          metrics=[RootMeanSquaredError(), MeanLogLikelihood()])
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
