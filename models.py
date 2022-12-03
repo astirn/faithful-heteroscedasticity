@@ -290,9 +290,13 @@ class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHetero
 
 class Student(tf.keras.Model):
 
-    def __init__(self):
-        tf.keras.Model.__init__(self)
+class Student(Regression):
+
+    def __init__(self, **kwargs):
+        super().__init__(name=kwargs['name'])
         self.min_df = 3
+        self.unit_variance_df = 100
+        self.unit_variance_scale = ((self.unit_variance_df - 2) / self.unit_variance_df) ** 0.5
 
     @property
     def model_class(self):
@@ -305,13 +309,16 @@ class Student(tf.keras.Model):
         return tfpd.StudentT(**params)
 
 
-class UnitVarianceStudent(Student, Regression):
+class UnitVarianceStudent(Student):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Student.__init__(self)
-        Regression.__init__(self, dim_x, f_trunk, name='UnitVarianceStudent', **kwargs)
-        self.unit_variance_df = 100
-        self.unit_variance_scale = ((self.unit_variance_df - 2) / self.unit_variance_df) ** 0.5
+        super().__init__(name=kwargs.pop('name', 'UnitVarianceStudent'), **kwargs)
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.dim_f_trunk = dim_x
+        else:
+            self.f_trunk = f_trunk(d_in=dim_x, name='f_trunk', **kwargs)
+            self.dim_f_trunk = self.f_trunk.output_shape[1:]
         self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
 
     def call(self, x, **kwargs):
@@ -330,12 +337,11 @@ class UnitVarianceStudent(Student, Regression):
         return params
 
 
-class HeteroscedasticStudent(Student, Regression):
+class HeteroscedasticStudent(UnitVarianceStudent):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Student.__init__(self)
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticStudent'), **kwargs)
-        self.f_loc = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc', **kwargs)
+        name = kwargs.pop('name', 'HeteroscedasticStudent')
+        super().__init__(dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param, name=name, **kwargs)
         self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
@@ -385,8 +391,8 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
     models = [
         dict(model=UnitVarianceNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=HeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=FaithfulHeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
     ]
@@ -488,12 +494,12 @@ if __name__ == '__main__':
         model = UnitVarianceNormal
     elif args.model == 'HeteroscedasticNormal':
         model = HeteroscedasticNormal
+    elif args.model == 'FaithfulHeteroscedasticNormal':
+        model = FaithfulHeteroscedasticNormal
     elif args.model == 'SecondOrderMean':
         model = SecondOrderMean
     elif args.model == 'BetaNLL':
         model = BetaNLL
-    elif args.model == 'FaithfulHeteroscedasticNormal':
-        model = FaithfulHeteroscedasticNormal
     elif args.model == 'UnitVarianceMonteCarloDropout':
         model = UnitVarianceMonteCarloDropout
     elif args.model == 'HeteroscedasticMonteCarloDropout':
