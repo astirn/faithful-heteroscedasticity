@@ -216,12 +216,6 @@ class NormalMixture(object):
         params['batch_lead'] = tf.constant([True], dtype=tf.bool)
         return params
 
-
-class NormalMixture(tf.keras.Model):
-
-    def __init__(self):
-        tf.keras.Model.__init__(self)
-
     def predictive_distribution(self, *, x=None, **params):
         if not {'loc', 'scale'}.issubset(set(params.keys())):
             assert x is not None
@@ -238,9 +232,9 @@ class NormalMixture(tf.keras.Model):
             components_distribution=tfpd.Normal(**params))
 
 
-class MonteCarloDropout(NormalMixture):
+class MonteCarloDropout(NormalMixture, ABC):
 
-    def __init__(self, *, dropout_rate=0.25, mc_samples=10, **kwargs):
+    def __init__(self, *, dropout_rate=0.25, mc_samples=10):
         NormalMixture.__init__(self)
         self.dropout_rate = dropout_rate
         self.mc_samples = mc_samples
@@ -252,18 +246,11 @@ class MonteCarloDropout(NormalMixture):
     def reshape_dims(self, x):
         return tf.stack([self.mc_samples, tf.shape(x)[0], -1])
 
-    def predict_step(self, x):
-        params = self.call(x, training=False)
-        params['loc'] = tf.transpose(params['loc'], [1, 0, 2])
-        params['scale'] = tf.transpose(params['scale'], [1, 0, 2])
-        params['batch_lead'] = tf.constant([True], dtype=tf.bool)
-        return params
-
 
 class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 
     def __init__(self, **kwargs):
-        MonteCarloDropout.__init__(self, **kwargs)
+        MonteCarloDropout.__init__(self)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         UnitVarianceNormal.__init__(self, name='UnitVarianceMonteCarloDropout', **kwargs)
 
@@ -276,7 +263,7 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        MonteCarloDropout.__init__(self, **kwargs)
+        MonteCarloDropout.__init__(self)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
 
@@ -290,7 +277,7 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
 class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        MonteCarloDropout.__init__(self, **kwargs)
+        MonteCarloDropout.__init__(self)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         FaithfulHeteroscedasticNormal.__init__(self, name='FaithfulHeteroscedasticMonteCarloDropout', **kwargs)
 
@@ -503,10 +490,10 @@ if __name__ == '__main__':
         model = HeteroscedasticNormal
     elif args.model == 'SecondOrderMean':
         model = SecondOrderMean
-    elif args.model == 'FaithfulHeteroscedasticNormal':
-        model = FaithfulHeteroscedasticNormal
     elif args.model == 'BetaNLL':
         model = BetaNLL
+    elif args.model == 'FaithfulHeteroscedasticNormal':
+        model = FaithfulHeteroscedasticNormal
     elif args.model == 'UnitVarianceMonteCarloDropout':
         model = UnitVarianceMonteCarloDropout
     elif args.model == 'HeteroscedasticMonteCarloDropout':
