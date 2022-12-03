@@ -467,6 +467,13 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
             dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
         ]
 
+    # Deep Ensemble models
+    models += [
+        dict(model=UnitVarianceDeepEnsemble, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=HeteroscedasticDeepEnsemble, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedasticDeepEnsemble, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+    ]
+
     # Student models
     models += [
         dict(model=UnitVarianceStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
@@ -568,9 +575,9 @@ if __name__ == '__main__':
     elif args.model == 'UnitVarianceDeepEnsemble':
         model = UnitVarianceDeepEnsemble
     elif args.model == 'HeteroscedasticDeepEnsemble':
-        model = FaithfulHeteroscedasticDeepEnsemble
-    elif args.model == 'FaithfulHeteroscedasticDeepEnsemble':
         model = HeteroscedasticDeepEnsemble
+    elif args.model == 'FaithfulHeteroscedasticDeepEnsemble':
+        model = FaithfulHeteroscedasticDeepEnsemble
     elif args.model == 'UnitVarianceStudent':
         model = UnitVarianceStudent
     elif args.model == 'HeteroscedasticStudent':
