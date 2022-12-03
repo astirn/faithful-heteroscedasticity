@@ -111,7 +111,7 @@ class UnitVarianceNormal(Normal, Regression):
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.Normal(loc=params['loc'], scale=1.0), reinterpreted_batch_ndims=1)
+            py_x = tfpd.Independent(tfpd.Normal(**params), reinterpreted_batch_ndims=1)
             loss = -tf.reduce_mean(py_x.log_prob(y))
             loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
         self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
