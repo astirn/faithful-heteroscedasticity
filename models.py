@@ -130,6 +130,23 @@ class HeteroscedasticNormal(UnitVarianceNormal):
         return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(z, **kwargs)}
 
 
+class BetaNLL(HeteroscedasticNormal):
+
+    def __init__(self, *, beta=0.5, **kwargs):
+        super().__init__(name='BetaNLL', **kwargs)
+        self.beta = beta
+
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+            params = self.call(x, training=True)
+            py_x = tfpd.Normal(*params.values())
+            beta_nll = -py_x.log_prob(y) * tf.stop_gradient(params['scale'] ** (2 * self.beta))
+            loss = tf.reduce_sum(beta_nll) / tf.cast(tf.shape(beta_nll)[0], tf.float32)
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+        return params
+
+
 class SecondOrderMean(HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
@@ -187,20 +204,16 @@ class FaithfulHeteroscedasticNormal(FaithfulNormal, HeteroscedasticNormal):
         return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
 
 
-class BetaNLL(HeteroscedasticNormal):
+class NormalMixture(object):
 
-    def __init__(self, *, beta=0.5, **kwargs):
-        super().__init__(name='BetaNLL', **kwargs)
-        self.beta = beta
+    def call(self, x, **kwargs):
+        raise NotImplementedError
 
-    def optimization_step(self, x, y):
-        with tf.GradientTape() as tape:
-            params = self.call(x, training=True)
-            py_x = tfpd.Normal(*params.values())
-            beta_nll = -py_x.log_prob(y) * tf.stop_gradient(params['scale'] ** (2 * self.beta))
-            loss = tf.reduce_sum(beta_nll) / tf.cast(tf.shape(beta_nll)[0], tf.float32)
-            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
-        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+    def predict_step(self, x):
+        params = self.call(x, training=False)
+        params['loc'] = tf.transpose(params['loc'], [1, 0, 2])
+        params['scale'] = tf.transpose(params['scale'], [1, 0, 2])
+        params['batch_lead'] = tf.constant([True], dtype=tf.bool)
         return params
 
 
