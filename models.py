@@ -5,6 +5,7 @@ import os
 import numpy as np
 import tensorflow as tf
 
+from abc import ABC
 from callbacks import RegressionCallback
 from datasets import generate_toy_data
 from matplotlib import pyplot as plt
@@ -45,14 +46,8 @@ def f_neural_net(d_in, d_out, d_hidden, f_out=None, **kwargs):
 
 class Regression(tf.keras.Model):
 
-    def __init__(self, dim_x, f_trunk, **kwargs):
-        tf.keras.Model.__init__(self, name=kwargs['name'])
-        if f_trunk is None:
-            self.f_trunk = lambda x, **k: x
-            self.dim_f_trunk = dim_x
-        else:
-            self.f_trunk = f_trunk(dim_x, **kwargs)
-            self.dim_f_trunk = self.f_trunk.output_shape[1:]
+    def __init__(self, **kwargs):
+        super().__init__(name=kwargs['name'])
 
     @staticmethod
     def parse_keras_inputs(data):
@@ -81,10 +76,10 @@ class Regression(tf.keras.Model):
         self.compiled_metrics.update_state(y_true=y, y_pred=predictor_values)
 
 
-class Normal(tf.keras.Model):
+class Normal(Regression):
 
-    def __init__(self):
-        tf.keras.Model.__init__(self)
+    def __init__(self, **kwargs):
+        super().__init__(name=kwargs['name'])
 
     @property
     def model_class(self):
@@ -96,18 +91,6 @@ class Normal(tf.keras.Model):
             params = self.call(x, training=False)
         return tfpd.Normal(**params)
 
-
-class UnitVarianceNormal(Normal, Regression):
-
-    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Normal.__init__(self)
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'UnitVarianceNormal'), **kwargs)
-        self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
-
-    def call(self, x, **kwargs):
-        mean = self.f_mean(self.f_trunk(x, **kwargs), **kwargs)
-        return {'loc': mean, 'scale': tf.ones_like(mean)}
-
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
             params = self.call(x, training=True)
@@ -118,32 +101,39 @@ class UnitVarianceNormal(Normal, Regression):
         return params
 
 
-class HeteroscedasticNormal(Normal, Regression):
+class UnitVarianceNormal(Normal):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        Normal.__init__(self)
-        Regression.__init__(self, dim_x, f_trunk, name=kwargs.pop('name', 'HeteroscedasticNormal'), **kwargs)
+        super().__init__(name=kwargs.pop('name', 'UnitVarianceNormal'), **kwargs)
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.dim_f_trunk = dim_x
+        else:
+            self.f_trunk = f_trunk(d_in=dim_x, name='f_trunk', **kwargs)
+            self.dim_f_trunk = self.f_trunk.output_shape[1:]
         self.f_mean = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mean', **kwargs)
+
+    def call(self, x, **kwargs):
+        mean = self.f_mean(self.f_trunk(x, **kwargs), **kwargs)
+        return {'loc': mean, 'scale': tf.ones_like(mean)}
+
+
+class HeteroscedasticNormal(UnitVarianceNormal):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        name = kwargs.pop('name', 'HeteroscedasticNormal')
+        super().__init__(dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param, name=name, **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
         return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(z, **kwargs)}
 
-    def optimization_step(self, x, y):
-        with tf.GradientTape() as tape:
-            params = self.call(x, training=True)
-            py_x = tfpd.Independent(tfpd.Normal(*params.values()), reinterpreted_batch_ndims=1)
-            loss = -tf.reduce_mean(py_x.log_prob(y))
-            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
-        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
-        return params
-
 
 class SecondOrderMean(HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        HeteroscedasticNormal.__init__(self, name='SecondOrderMean', **kwargs)
+        super().__init__(name='SecondOrderMean', **kwargs)
 
     def optimization_step(self, x, y):
 
@@ -171,14 +161,10 @@ class SecondOrderMean(HeteroscedasticNormal):
         return params
 
 
-class FaithfulHeteroscedasticNormal(HeteroscedasticNormal):
+class FaithfulNormal(Normal):
 
-    def __init__(self, **kwargs):
-        HeteroscedasticNormal.__init__(self, name=kwargs.pop('name', 'FaithfulHeteroscedasticNormal'), **kwargs)
-
-    def call(self, x, **kwargs):
-        z = self.f_trunk(x, **kwargs)
-        return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
+    def __int__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def optimization_step(self, x, y):
         with tf.GradientTape() as tape:
@@ -191,10 +177,20 @@ class FaithfulHeteroscedasticNormal(HeteroscedasticNormal):
         return params
 
 
+class FaithfulHeteroscedasticNormal(FaithfulNormal, HeteroscedasticNormal):
+
+    def __init__(self, **kwargs):
+        super().__init__(name=kwargs.pop('name', 'FaithfulHeteroscedasticNormal'), **kwargs)
+
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
+
+
 class BetaNLL(HeteroscedasticNormal):
 
     def __init__(self, *, beta=0.5, **kwargs):
-        HeteroscedasticNormal.__init__(self, name='BetaNLL', **kwargs)
+        super().__init__(name='BetaNLL', **kwargs)
         self.beta = beta
 
     def optimization_step(self, x, y):
