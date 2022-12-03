@@ -337,6 +337,18 @@ class HeteroscedasticDeepEnsemble(UnitVarianceDeepEnsemble):
         return {'loc': loc, 'scale': scale}
 
 
+class FaithfulHeteroscedasticDeepEnsemble(FaithfulNormal, HeteroscedasticDeepEnsemble):
+
+    def __init__(self, **kwargs):
+        super().__init__(name=kwargs.pop('name', 'FaithfulHeteroscedasticDeepEnsemble'), **kwargs)
+
+    def call(self, x, **kwargs):
+        z = [f_trunk(x, **kwargs) for f_trunk in self.f_trunk]
+        loc = tf.stack([f_loc(z[i], **kwargs) for i, f_loc in enumerate(self.f_loc)], axis=0)
+        scale = tf.stack([f_scale(tf.stop_gradient(z[i]), **kwargs) for i, f_scale in enumerate(self.f_scale)], axis=0)
+        return {'loc': loc, 'scale': scale}
+
+
 class Student(Regression):
 
     def __init__(self, **kwargs):
@@ -556,6 +568,8 @@ if __name__ == '__main__':
     elif args.model == 'UnitVarianceDeepEnsemble':
         model = UnitVarianceDeepEnsemble
     elif args.model == 'HeteroscedasticDeepEnsemble':
+        model = FaithfulHeteroscedasticDeepEnsemble
+    elif args.model == 'FaithfulHeteroscedasticDeepEnsemble':
         model = HeteroscedasticDeepEnsemble
     elif args.model == 'UnitVarianceStudent':
         model = UnitVarianceStudent
