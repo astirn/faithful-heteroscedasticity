@@ -288,7 +288,54 @@ class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHetero
         return {'loc': loc, 'scale': tf.clip_by_value(scale, 1e-9, np.inf)}
 
 
-class Student(tf.keras.Model):
+class DeepEnsemble(NormalMixture, Normal, ABC):
+
+    def __init__(self, *, num_models=10, **kwargs):
+        NormalMixture.__init__(self)
+        Normal.__init__(self, **kwargs)
+        self.num_models = num_models
+
+    @property
+    def model_class(self):
+        return 'Deep Ensembles'
+
+
+class UnitVarianceDeepEnsemble(DeepEnsemble):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        super().__init__(name=kwargs.pop('name', 'UnitVarianceDeepEnsemble'), **kwargs)
+        self.f_trunk = []
+        self.f_loc = []
+        for m in range(self.num_models):
+            if f_trunk is None:
+                self.f_trunk += [lambda x, **k: x]
+                self.dim_f_trunk = dim_x
+            else:
+                self.f_trunk += [f_trunk(d_in=dim_x, name='f_trunk' + str(m), **kwargs)]
+                self.dim_f_trunk = self.f_trunk[0].output_shape[1:]
+            self.f_loc += [f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_loc' + str(m), **kwargs)]
+
+    def call(self, x, **kwargs):
+        z = [f_trunk(x, **kwargs) for f_trunk in self.f_trunk]
+        loc = tf.stack([f_loc(z[i], **kwargs) for i, f_loc in enumerate(self.f_loc)], axis=0)
+        return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
+
+
+class HeteroscedasticDeepEnsemble(UnitVarianceDeepEnsemble):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        name = kwargs.pop('name', 'HeteroscedasticDeepEnsemble')
+        super().__init__(dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param, name=name, **kwargs)
+        self.f_scale = []
+        for m in range(self.num_models):
+            self.f_scale += [f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)]
+
+    def call(self, x, **kwargs):
+        z = [f_trunk(x, **kwargs) for f_trunk in self.f_trunk]
+        loc = tf.stack([f_loc(z[i], **kwargs) for i, f_loc in enumerate(self.f_loc)], axis=0)
+        scale = tf.stack([f_scale(z[i], **kwargs) for i, f_scale in enumerate(self.f_scale)], axis=0)
+        return {'loc': loc, 'scale': scale}
+
 
 class Student(Regression):
 
@@ -506,6 +553,10 @@ if __name__ == '__main__':
         model = HeteroscedasticMonteCarloDropout
     elif args.model == 'FaithfulHeteroscedasticMonteCarloDropout':
         model = FaithfulHeteroscedasticMonteCarloDropout
+    elif args.model == 'UnitVarianceDeepEnsemble':
+        model = UnitVarianceDeepEnsemble
+    elif args.model == 'HeteroscedasticDeepEnsemble':
+        model = HeteroscedasticDeepEnsemble
     elif args.model == 'UnitVarianceStudent':
         model = UnitVarianceStudent
     elif args.model == 'HeteroscedasticStudent':
