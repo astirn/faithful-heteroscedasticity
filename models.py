@@ -297,7 +297,7 @@ class DeepEnsemble(NormalMixture, Normal, ABC):
 
     @property
     def model_class(self):
-        return 'Deep Ensembles'
+        return 'Deep Ensemble'
 
 
 class UnitVarianceDeepEnsemble(DeepEnsemble):
