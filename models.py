@@ -448,8 +448,8 @@ class VariationalVariance(Student):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         super().__init__(name=kwargs.pop('name'))
-        self.k = 100
-        self.num_mc_samples = 100
+        self.k = 10
+        self.num_mc_samples = 10
 
         # trunk network
         if f_trunk is None:
