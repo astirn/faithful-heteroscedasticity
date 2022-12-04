@@ -448,6 +448,8 @@ class VariationalVariance(Student):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
         super().__init__(name=kwargs.pop('name'))
+        self.k = 100
+        self.num_mc_samples = 100
 
         # trunk network
         if f_trunk is None:
@@ -467,7 +469,7 @@ class VariationalVariance(Student):
         mu = self.f_mu(z, **kwargs)
         alpha = self.min_df / 2 + self.f_alpha(z, **kwargs)
         beta = self.f_beta(z, **kwargs)
-        return {'mu': mu, 'alpha': alpha, 'beta': beta}
+        return {'z': z, 'mu': mu, 'alpha': alpha, 'beta': beta}
 
     def predictive_distribution(self, *, x=None, **params):
         if not {'mu', 'alpha', 'beta'}.issubset(set(params.keys())):
@@ -475,7 +477,7 @@ class VariationalVariance(Student):
             params = self.call(x, training=False)
         return tfpd.StudentT(df=2 * params['alpha'], loc=params['mu'], scale=tf.sqrt(params['beta'] / params['alpha']))
 
-    def kl_divergence(self, x, alpha, beta, **kwargs):
+    def kl_divergence(self, z, alpha, beta, **kwargs):
         raise NotImplementedError
 
     def optimization_step(self, x, y):
@@ -491,7 +493,7 @@ class VariationalVariance(Student):
             ell = tf.reduce_sum(ell, axis=-1)
 
             # KL divergence
-            dkl = self.kl_divergence(x, params['alpha'], params['beta'], training=False)
+            dkl = self.kl_divergence(params['z'], params['alpha'], params['beta'], training=False)
 
             # negative ELBO loss
             loss = -tf.reduce_mean(ell - dkl)
@@ -509,12 +511,36 @@ class VBEM(VariationalVariance):
 
     def __init__(self, **kwargs):
         super().__init__(name='VBEM*', **kwargs)
-        self.k = 100
-        self.mc_samples = 100
-        # self.pi = f_param(d_in=self.dim_f_trunk, d_out=self.k, f_out='softmax', name='pi', **kwargs)
+        u = tf.random.uniform(shape=(self.k, kwargs['dim_y']), minval=-3, maxval=3, dtype=tf.float32)
+        v = tf.random.uniform(shape=(self.k, kwargs['dim_y']), minval=-3, maxval=3, dtype=tf.float32)
+        self.u = tf.Variable(initial_value=u, dtype=tf.float32, trainable=True, name='u')
+        self.v = tf.Variable(initial_value=v, dtype=tf.float32, trainable=True, name='v')
+        self.f_pi = kwargs['f_param'](d_in=self.dim_f_trunk, d_out=self.k, f_out='softmax', name='f_pi', **kwargs)
 
-    def kl_divergence(self, x, alpha, beta, **kwargs):
-        return 0
+    def kl_divergence(self, z, alpha, beta, **kwargs):
+
+        # variational family
+        qp = tfpd.Independent(tfpd.Gamma(alpha, beta), reinterpreted_batch_ndims=1)
+        p_samples = tf.expand_dims(qp.sample(sample_shape=self.num_mc_samples), axis=2)
+        p_samples = tf.clip_by_value(p_samples, clip_value_min=1e-30, clip_value_max=tf.float32.max)
+
+        # log prior probabilities for each component--shape is [# MC samples, batch size, # components]
+        a = tf.reshape(tf.nn.softplus(self.u), tf.stack([1, 1, self.k, -1]))
+        b = tf.reshape(tf.nn.softplus(self.v), tf.stack([1, 1, self.k, -1]))
+        log_pp_c = tfpd.Independent(tfpd.Gamma(a, b), 1).log_prob(p_samples)
+
+        # prior mixture proportions--shape is [batch size, # components]
+        pi = self.f_pi(z)
+
+        # take the expectation w.r.t. to mixture proportions--shape will be [# MC samples, batch size]
+        epsilon = 1e-30
+        log_pp = tf.reduce_logsumexp(tf.math.log(pi + epsilon) + log_pp_c, axis=-1)  # add offset to avoid log(0)
+        log_pp -= tf.math.log(tf.reduce_sum(epsilon + pi, axis=-1))  # correct for the offset
+
+        # average over MC samples--shape will be [batch size]
+        dkl = -qp.entropy() - tf.reduce_mean(log_pp, axis=0)
+
+        return dkl
 
 
 def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
@@ -657,6 +683,8 @@ if __name__ == '__main__':
         model = HeteroscedasticStudent
     elif args.model == 'FaithfulHeteroscedasticStudent':
         model = FaithfulHeteroscedasticStudent
+    elif args.model == 'VBEM':
+        model = VBEM
     else:
         raise NotImplementedError
     assert args.architecture in {'single', 'separate', 'shared'}
