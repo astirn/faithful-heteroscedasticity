@@ -510,7 +510,7 @@ class VariationalVariance(Student):
 class VBEM(VariationalVariance):
 
     def __init__(self, **kwargs):
-        super().__init__(name='VBEM*', **kwargs)
+        super().__init__(name='VBEM', **kwargs)
         u = tf.random.uniform(shape=(self.k, kwargs['dim_y']), minval=-3, maxval=3, dtype=tf.float32)
         v = tf.random.uniform(shape=(self.k, kwargs['dim_y']), minval=-3, maxval=3, dtype=tf.float32)
         self.u = tf.Variable(initial_value=u, dtype=tf.float32, trainable=True, name='u')
@@ -578,6 +578,7 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
         dict(model=UnitVarianceStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=HeteroscedasticStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=FaithfulHeteroscedasticStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=VBEM, model_kwargs=dict(), nn_kwargs=nn_kwargs),
     ]
 
     return models
