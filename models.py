@@ -444,6 +444,79 @@ class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
         return params
 
 
+class VariationalVariance(Student):
+
+    def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
+        super().__init__(name=kwargs.pop('name'))
+
+        # trunk network
+        if f_trunk is None:
+            self.f_trunk = lambda x, **k: x
+            self.dim_f_trunk = dim_x
+        else:
+            self.f_trunk = f_trunk(d_in=dim_x, name='f_trunk', **kwargs)
+            self.dim_f_trunk = self.f_trunk.output_shape[1:]
+
+        # parameter head networks
+        self.f_mu = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out=None, name='f_mu', **kwargs)
+        self.f_alpha = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_alpha', **kwargs)
+        self.f_beta = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_beta', **kwargs)
+
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        mu = self.f_mu(z, **kwargs)
+        alpha = self.min_df / 2 + self.f_alpha(z, **kwargs)
+        beta = self.f_beta(z, **kwargs)
+        return {'mu': mu, 'alpha': alpha, 'beta': beta}
+
+    def predictive_distribution(self, *, x=None, **params):
+        if not {'mu', 'alpha', 'beta'}.issubset(set(params.keys())):
+            assert x is not None
+            params = self.call(x, training=False)
+        return tfpd.StudentT(df=2 * params['alpha'], loc=params['mu'], scale=tf.sqrt(params['beta'] / params['alpha']))
+
+    def kl_divergence(self, x, alpha, beta, **kwargs):
+        raise NotImplementedError
+
+    def optimization_step(self, x, y):
+        with tf.GradientTape() as tape:
+
+            # run parameter networks
+            params = self.call(x, training=True)
+
+            # expected log likelihood
+            precision = params['alpha'] / params['beta']
+            log_precision = tf.math.digamma(params['alpha']) - tf.math.log(params['beta'])
+            ell = 0.5 * (log_precision - tf.math.log(2 * np.pi) - (y - params['mu']) ** 2 * precision)
+            ell = tf.reduce_sum(ell, axis=-1)
+
+            # KL divergence
+            dkl = self.kl_divergence(x, params['alpha'], params['beta'], training=False)
+
+            # negative ELBO loss
+            loss = -tf.reduce_mean(ell - dkl)
+
+            # layer losses
+            loss += tf.reduce_sum(tf.stack(self.losses)) / tf.cast(tf.shape(x)[0], tf.float32)
+
+        # apply gradients
+        self.optimizer.apply_gradients(zip(tape.gradient(loss, self.trainable_variables), self.trainable_variables))
+
+        return params
+
+
+class VBEM(VariationalVariance):
+
+    def __init__(self, **kwargs):
+        super().__init__(name='VBEM*', **kwargs)
+        self.k = 100
+        self.mc_samples = 100
+        # self.pi = f_param(d_in=self.dim_f_trunk, d_out=self.k, f_out='softmax', name='pi', **kwargs)
+
+    def kl_divergence(self, x, alpha, beta, **kwargs):
+        return 0
+
+
 def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
 
     # Normal models
