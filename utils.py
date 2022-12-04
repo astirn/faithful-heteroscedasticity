@@ -27,10 +27,15 @@ class ZScoreNormalization(object):
 
 
 def pretty_model_name(model, model_kwargs):
-    name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
-    name = name.replace('N L L', 'NLL')
-    if 'beta' in model_kwargs.keys():
-        name = name + ' (' + str(model_kwargs['beta']) + ')'
+    if model.name == 'BetaNLL':
+        name = 'Beta NLL'
+        if 'beta' in model_kwargs.keys():
+            name = name + ' (' + str(model_kwargs['beta']) + ')'
+    elif 'VBEM' in model.name:
+        name = model.name
+    else:
+        name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
+
     return name
 
 
