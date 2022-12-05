@@ -474,16 +474,13 @@ def crispr_motif_plots():
                     shap = pd.concat([shap, pd.DataFrame(shap_values, index.repeat(len(shap_values['A'])))])
 
             # make sure below assumptions hold
-            assert set(df_shap.index.unique('Model')) == set(MODELS)
-            assert set(df_mean_output.index.unique('Model')) == set(MODELS)
+            assert df_shap.index.names == df_mean_output.index.names == ['Model', 'Observations']
             observations = ['replicates', 'means']
             assert set(df_shap.index.unique('Observations')) == set(observations)
             assert set(df_mean_output.index.unique('Observations')) == set(observations)
-            assert df_shap.index.nunique() == len(MODELS) * len(observations)
-            assert df_mean_output.index.nunique() == len(MODELS) * len(observations)
 
             # plot SHAP values for every model
-            for model in MODELS:
+            for model in df_shap.index.unique('Model'):
                 fig, ax = plt.subplots(nrows=5, figsize=(10, 15))
                 for i, moment in enumerate(['mean', 'std']):
                     for j, observation in enumerate(['replicates', 'means']):
