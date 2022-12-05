@@ -543,7 +543,7 @@ class VBEM(VariationalVariance):
         return dkl
 
 
-def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
+def get_models_and_configurations(nn_kwargs, mcd_kwargs=None, de_kwargs=None, student_kwargs=None):
 
     # Normal models
     models = [
@@ -567,19 +567,21 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None):
         ]
 
     # Deep Ensemble models
-    models += [
-        dict(model=UnitVarianceDeepEnsemble, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=HeteroscedasticDeepEnsemble, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedasticDeepEnsemble, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-    ]
+    if de_kwargs is not None:
+        models += [
+            dict(model=UnitVarianceDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=HeteroscedasticDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=FaithfulHeteroscedasticDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
+        ]
 
     # Student models
-    models += [
-        dict(model=UnitVarianceStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=HeteroscedasticStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedasticStudent, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=VBEM, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-    ]
+    if student_kwargs is not None:
+        models += [
+            dict(model=UnitVarianceStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=HeteroscedasticStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=FaithfulHeteroscedasticStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=VBEM, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
+        ]
 
     return models
 
