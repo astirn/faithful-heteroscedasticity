@@ -186,7 +186,7 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
     col_fmt = 'l' * len(row_idx)
     col_fmt += ''.join(['|' + 'c' * len(df_latex[alg].columns) for alg in df_latex.columns.unique(0)])
     file_name = os.path.join('results', file_name)
-    style.to_latex(buf=file_name, column_format=col_fmt, hrules=True, multirow_align='t', siunitx=True)
+    style.to_latex(buf=file_name, column_format=col_fmt, multicol_align='|c', hrules=True, multirow_align='t')
 
 
 def print_tables(df, experiment, non_config_indices=('Model',)):
