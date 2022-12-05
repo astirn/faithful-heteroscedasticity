@@ -39,10 +39,8 @@ def pretty_model_name(model, model_kwargs):
     return name
 
 
-def model_config_index(model_name, model_class=None, **kwargs):  # TODO: make model class required for VAE and CRISPR
-    index_dict = {'Model': model_name}
-    if model_class is not None:
-        index_dict.update({'Class': model_class})
+def model_config_index(model_name, model_class, **kwargs):
+    index_dict = {'Model': model_name.replace(' ' + model_class, ''), 'Class': model_class}
     for key, value in kwargs.items():
         value = value.__name__ if callable(value) else str(value)
         index_dict.update({key: value})

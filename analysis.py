@@ -22,11 +22,7 @@ COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedas
 
 
 def filter_model_class(df, model_class):
-    df = df.loc[df.index.get_level_values('Class') == model_class, :].droplevel('Class').reset_index('Model')
-    df['Model'] = df['Model'].apply(lambda s: s.replace(' ' + model_class, ''))
-    df.set_index('Model', append=True, inplace=True)
-    df.index = df.index.reorder_levels(['Model'] + list(df.index.names)[:-1])
-    return df
+    return df.loc[df.index.get_level_values('Class') == model_class, :].droplevel('Class')
 
 
 def drop_unused_index_levels(performance):
