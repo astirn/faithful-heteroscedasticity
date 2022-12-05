@@ -1,20 +1,20 @@
-\begin{tabular}{l|ccc|ccc|ccc}
+\begin{tabular}{l|ccc|ccc|ccc|ccc}
 \toprule
-{} & \multicolumn{3}{r}{Unit Variance} & \multicolumn{3}{r}{Heteroscedastic} & \multicolumn{3}{r}{Faithful Heteroscedastic} \\
-{} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} \\
-{Dataset} & {} & {} & {} & {} & {} & {} & {} & {} & {} \\
+{} & \multicolumn{3}{r}{Unit Variance} & \multicolumn{3}{r}{Heteroscedastic} & \multicolumn{3}{r}{VBEM} & \multicolumn{3}{r}{Faithful Heteroscedastic} \\
+{} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} & {RMSE} & {ECE} & {LL} \\
+{Dataset} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} & {} \\
 \midrule
-boston & 0.304 & 0.168 & -0.959 & \sout{0.387} & \sout{0.017} & \sout{-1.05} & \textbf{0.304} & \textbf{0.026} & \textbf{-1.63} \\
-carbon & 0.0489 & 0.279 & -2.74 & \textbf{0.0488} & 0.000339 & \textbf{12.6} & \textbf{0.0489} & \textbf{0.000134} & \textbf{11.8} \\
-concrete & 0.265 & 0.127 & -0.947 & \sout{0.322} & \sout{0.0151} & \sout{-2.53} & \textbf{0.265} & \textbf{0.0306} & \textbf{-0.93} \\
-energy & 0.16 & 0.268 & -1.84 & \sout{0.196} & \sout{0.00164} & \sout{4.48} & \textbf{0.16} & \textbf{0.00104} & \textbf{3.94} \\
-naval & 0.0247 & 0.271 & -1.82 & \sout{0.521} & \sout{0.000101} & \sout{4.69} & \textbf{0.0247} & \textbf{0.000171} & \textbf{7.04} \\
-power plant & 0.22 & 0.0105 & -0.936 & \sout{0.227} & \sout{0.000179} & \sout{0.15} & \textbf{0.22} & \textbf{0.000152} & \textbf{0.154} \\
-protein & 0.00257 & 0.49 & -0.911 & \sout{0.0287} & \sout{0.000721} & \sout{4} & \textbf{0.00257} & \textbf{0.00137} & \textbf{4.94} \\
-superconductivity & 0.326 & 0.0104 & -0.966 & \sout{0.397} & \sout{0.00153} & \sout{0.16} & \textbf{0.326} & \textbf{0.000993} & \textbf{0.02} \\
-wine-red & 0.769 & 0.00601 & -1.21 & \sout{0.782} & \sout{0.00249} & \sout{-1.36} & \textbf{0.769} & \textbf{0.00247} & \textbf{-1.19} \\
-wine-white & 0.777 & 0.0015 & -1.22 & \sout{0.783} & \sout{0.000786} & \sout{-1.29} & \textbf{0.777} & \textbf{0.00041} & \textbf{-1.17} \\
-yacht & 0.0226 & 0.375 & -0.912 & \sout{0.677} & \sout{0.0603} & \sout{-0.689} & \textbf{0.0226} & \textbf{0.0161} & \textbf{2.29} \\
-\textit{{Total wins or ties}} & -- & -- & -- & \textit{1} & \textit{0} & \textit{1} & \textit{11} & \textit{11} & \textit{11} \\
+boston & 0.304 & 0.168 & -0.959 & \sout{0.387} & \sout{0.017} & \sout{-1.05} & \textbf{0.339} & \textbf{0.0137} & \textbf{-0.311} & \textbf{0.304} & 0.026 & -1.63 \\
+carbon & 0.0489 & 0.279 & -2.74 & \textbf{0.0488} & 0.000339 & \textbf{12.6} & \textbf{0.0488} & 0.0054 & \textbf{9.01} & 0.0489 & \textbf{0.000134} & \textbf{11.8} \\
+concrete & 0.265 & 0.127 & -0.947 & \sout{0.322} & \sout{0.0151} & \sout{-2.53} & \textbf{0.27} & \textbf{0.0134} & \textbf{-0.22} & \textbf{0.265} & 0.0306 & \textbf{-0.93} \\
+energy & 0.16 & 0.268 & -1.84 & \sout{0.196} & \sout{0.00164} & \sout{4.48} & \sout{0.185} & \sout{0.0228} & \sout{2.96} & \textbf{0.16} & \textbf{0.00104} & \textbf{3.94} \\
+naval & 0.0247 & 0.271 & -1.82 & \sout{0.521} & \sout{0.000101} & \sout{4.69} & \sout{0.0482} & \sout{0.0034} & \sout{6.34} & \textbf{0.0247} & \textbf{0.000171} & \textbf{7.04} \\
+power plant & 0.22 & 0.0105 & -0.936 & \sout{0.227} & \sout{0.000179} & \sout{0.15} & \sout{0.221} & \sout{0.000177} & \sout{0.122} & \textbf{0.22} & \textbf{0.000152} & \textbf{0.154} \\
+protein & 0.00257 & 0.49 & -0.911 & \sout{0.0287} & \sout{0.000721} & \sout{4} & \sout{0.00383} & \sout{0.00429} & \sout{4.38} & \textbf{0.00257} & \textbf{0.00137} & \textbf{4.94} \\
+superconductivity & 0.326 & 0.0104 & -0.966 & \sout{0.397} & \sout{0.00153} & \sout{0.16} & \sout{0.347} & \sout{0.0011} & \sout{0.132} & \textbf{0.326} & \textbf{0.000993} & \textbf{0.02} \\
+wine-red & 0.769 & 0.00601 & -1.21 & \sout{0.782} & \sout{0.00249} & \sout{-1.36} & \textbf{0.771} & 0.00567 & \textbf{-1.16} & \textbf{0.769} & \textbf{0.00247} & -1.19 \\
+wine-white & 0.777 & 0.0015 & -1.22 & \sout{0.783} & \sout{0.000786} & \sout{-1.29} & \textbf{0.777} & 0.000711 & \textbf{-1.16} & \textbf{0.777} & \textbf{0.00041} & -1.17 \\
+yacht & 0.0226 & 0.375 & -0.912 & \sout{0.677} & \sout{0.0603} & \sout{-0.689} & \textbf{0.0193} & 0.103 & \textbf{2.42} & 0.0226 & \textbf{0.0161} & 2.29 \\
+\textit{{Total wins or ties}} & -- & -- & -- & \textit{1} & \textit{0} & \textit{1} & \textit{6} & \textit{2} & \textit{6} & \textit{9} & \textit{9} & \textit{7} \\
 \bottomrule
 \end{tabular}
