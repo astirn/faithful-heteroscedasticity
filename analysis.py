@@ -334,7 +334,7 @@ def toy_convergence_plots(model_class):
     fig.savefig(os.path.join('results', 'toy_convergence_' + model_class.replace(' ', '_') + '.pdf'))
 
 
-def vae_plots(examples_per_class=1):
+def vae_plots(model_class, examples_per_class=1):
 
     # utility function vae plots
     def concat_examples(output, indices=None):
@@ -346,15 +346,15 @@ def vae_plots(examples_per_class=1):
         measurements_df_file = os.path.join('experiments', 'vae', dataset, 'measurements_df.pkl')
         measurements_dict_file = os.path.join('experiments', 'vae', dataset, 'measurements_dict.pkl')
         if os.path.exists(measurements_df_file) and os.path.exists(measurements_dict_file):
-            measurements_df = pd.read_pickle(measurements_df_file).sort_index()
+            measurements_df = filter_model_class(pd.read_pickle(measurements_df_file).sort_index(), model_class)
             with open(measurements_dict_file, 'rb') as f:
                 measurements_dict = pickle.load(f)
 
             # make sure we support what was provided
-            assert set(measurements_df.index.unique('Model')) == set(MODELS)
             observations = ['clean', 'corrupt']
             assert set(measurements_df.index.unique('Observations')) == set(observations)
-            assert measurements_df.index.nunique() == len(MODELS) * len(observations)
+            assert len(measurements_df.index.unique('Model')) * len(measurements_df.index.unique('Observations')) == \
+                   measurements_df.index.nunique()
 
             # randomly select some examples of each class to plot
             np.random.seed(args.seed)
@@ -364,8 +364,9 @@ def vae_plots(examples_per_class=1):
                 i_plot = np.concatenate([i_plot, np.random.choice(i_class, size=examples_per_class)], axis=0)
 
             # prepare performance plot
-            fig, ax = plt.subplots(nrows=1 + len(MODELS), ncols=2, figsize=(16, 2 * (1 + len(MODELS))))
-            # fig.suptitle(dataset.replace('_', '-'))
+            models = set(MODELS).intersection(set(measurements_df.index.unique('Model')))
+            models = [model for model in MODELS if model in models]
+            fig, ax = plt.subplots(nrows=1 + len(models), ncols=2, figsize=(16, 2 * (1 + len(models))))
 
             # plot data
             for col, observation in enumerate(observations):
@@ -384,7 +385,7 @@ def vae_plots(examples_per_class=1):
                 std = concat_examples(measurements_dict['Std.'][str(index_dict)], i_plot) - 5
 
                 # plot moments
-                row = 1 + MODELS.index(index_dict['Model'])
+                row = 1 + models.index(index_dict['Model'])
                 col = observations.index(index_dict['Observations'])
                 ax[row, col].imshow(np.concatenate([mean, std], axis=0), cmap='gray_r', vmin=-5, vmax=5)
                 ax[row, col].set_title(index_dict['Model'])
@@ -393,11 +394,12 @@ def vae_plots(examples_per_class=1):
 
             # finalize and save figures
             plt.tight_layout()
-            fig.savefig(os.path.join('results', '_'.join(['vae', 'moments', dataset])) + '.pdf')
+            fig.savefig(os.path.join('results', '_'.join(['vae', model_class, 'moments', dataset])) + '.pdf')
 
             # prepare variance decomposition plot
-            fig, ax = plt.subplots(nrows=1 + len(HETEROSCEDASTIC_MODELS),
-                                   figsize=(8, 1.25 * (1 + len(HETEROSCEDASTIC_MODELS))))
+            models = set(HETEROSCEDASTIC_MODELS).intersection(set(measurements_df.index.unique('Model')))
+            models = [model for model in HETEROSCEDASTIC_MODELS if model in models]
+            fig, ax = plt.subplots(nrows=1 + len(models), figsize=(8, 1.25 * (1 + len(models))))
             x = concat_examples(measurements_dict['Noise variance']['corrupt']) ** 0.5
             ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=5)
             ax[0].set_title('True $\\sqrt{\\mathrm{noise \\ variance}}$ per class')
@@ -405,9 +407,9 @@ def vae_plots(examples_per_class=1):
             ax[0].set_yticks([])
 
             # plot each model's performance
-            for model in HETEROSCEDASTIC_MODELS:
-                index_clean = measurements_df.loc[([model], ['clean']), :].index.unique()
-                index_corrupt = measurements_df.loc[([model], ['corrupt']), :].index.unique()
+            for model in models:
+                index_clean = measurements_df.loc[([model], [model_class], ['clean']), :].index.unique()
+                index_corrupt = measurements_df.loc[([model], [model_class], ['corrupt']), :].index.unique()
                 assert len(index_clean) == len(index_corrupt) == 1, 'only one configuration per model is supported'
                 index_clean = str(dict(zip(measurements_df.index.names, index_clean[0])))
                 index_corrupt = str(dict(zip(measurements_df.index.names, index_corrupt[0])))
@@ -423,7 +425,7 @@ def vae_plots(examples_per_class=1):
                 mean_std_noise = np.concatenate(mean_std_noise, axis=1)
 
                 # plot recovered noise variance
-                row = 1 + HETEROSCEDASTIC_MODELS.index(model)
+                row = 1 + models.index(model)
                 ax[row].imshow(mean_std_noise, cmap='gray_r', vmin=0, vmax=5)
                 ax[row].set_title(model)
                 ax[row].set_xticks([])
@@ -431,7 +433,7 @@ def vae_plots(examples_per_class=1):
 
             # finalize and save figures
             plt.tight_layout()
-            fig.savefig(os.path.join('results', '_'.join(['vae', 'noise', dataset])) + '.pdf')
+            fig.savefig(os.path.join('results', '_'.join(['vae', model_class, 'noise', dataset])) + '.pdf')
 
 
 def crispr_motif_plots():
@@ -530,9 +532,9 @@ if __name__ == '__main__':
         uci_tables(args.model_class, normalized=True)
 
     # VAE experiments
-    if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):  # TODO: add model class support
-        vae_tables()
-        vae_plots()
+    if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
+        vae_tables(args.model_class)
+        vae_plots(args.model_class)
 
     # CRISPR tables and figures
     if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):  # TODO: add model class support
