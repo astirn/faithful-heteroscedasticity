@@ -41,7 +41,7 @@ dim_y = data['y_train'].shape[1]
 # models, architectures and configurations to run
 nn_kwargs = dict(f_trunk=None, f_param=f_neural_net, d_hidden=(args.dim_hidden,))
 mcd_kwargs = dict(mc_samples=1000)
-models_and_configurations = get_models_and_configurations(nn_kwargs, mcd_kwargs)
+models_and_configurations = get_models_and_configurations(nn_kwargs, mcd_kwargs, dict(), dict())
 
 # initialize/load optimization history
 opti_history_file = os.path.join(exp_path, 'optimization_history.pkl')
