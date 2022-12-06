@@ -35,8 +35,9 @@ os.makedirs(exp_path, exist_ok=True)
 tf.config.experimental.enable_op_determinism()
 
 # models and configurations to run
-nn_kwargs = dict(f_trunk=f_hidden_layers, f_param=f_output_layer, d_hidden=(50, 50))
-models_and_configurations = get_models_and_configurations(nn_kwargs, dict(), dict(), dict())
+models_and_configurations = get_models_and_configurations(
+    nn_kwargs=dict(f_trunk=f_hidden_layers, f_param=f_output_layer, d_hidden=(50, 50)),
+    mcd_kwargs=dict(), de_kwargs=dict(), student_kwargs=dict())
 
 # loop over trials
 measurements = pd.DataFrame()
