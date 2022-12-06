@@ -131,7 +131,8 @@ if __name__ == '__main__':
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
-            index, index_str = model_config_index(model_name, **{**{'Observations': observations}, **mag['nn_kwargs']})  # TODO: add model class
+            index, index_str = model_config_index(model_name, model.model_class,
+                                                  **{**{'Observations': observations}, **mag['nn_kwargs']})
             print('***** {:s} *****'.format(index_str))
 
             # determine where to save model
@@ -173,8 +174,8 @@ if __name__ == '__main__':
             }, index.repeat(py_x.batch_shape))])
 
             # update measurements dictionary
-            measurements_dict['Mean'].update({index_str: py_x.mean()})
-            measurements_dict['Std.'].update({index_str: py_x.stddev()})
+            measurements_dict['Mean'].update({index_str: py_x.mean().numpy()})
+            measurements_dict['Std.'].update({index_str: py_x.stddev().numpy()})
             z_scores = (x_valid - py_x.mean()) / py_x.stddev()
             measurements_dict['Z'].update({index_str: z_scores.numpy()})
 
