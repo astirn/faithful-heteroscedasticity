@@ -635,8 +635,8 @@ def fancy_plot(x_train, y_train, x_test, target_mean, target_std, predicted_mean
     ax[1].legend()
 
     # save the figure
-    os.makedirs('results', exist_ok=True)
-    fig.savefig(os.path.join('results', 'toy_' + plot_title.replace(' ', '') + '.pdf'))
+    # os.makedirs('results', exist_ok=True)
+    # fig.savefig(os.path.join('results', 'toy_' + plot_title.replace(' ', '') + '.pdf'))
 
 
 if __name__ == '__main__':
