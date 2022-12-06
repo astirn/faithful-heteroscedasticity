@@ -72,8 +72,8 @@ if __name__ == '__main__':
     optimization_history = pd.read_pickle(opti_history_file) if os.path.exists(opti_history_file) else pd.DataFrame()
 
     # initialize/load SHAP values
-    mean_output_file = os.path.join(exp_path, 'mean_output.pkl')
-    mean_output = pd.read_pickle(mean_output_file) if os.path.exists(mean_output_file) else pd.DataFrame()
+    mean_file = os.path.join(exp_path, 'mean.pkl')
+    mean = pd.read_pickle(mean_file) if os.path.exists(mean_file) else pd.DataFrame()
     shap_file = os.path.join(exp_path, 'shap.pkl')
     shap = pd.read_pickle(shap_file) if os.path.exists(shap_file) else pd.DataFrame()
 
@@ -142,8 +142,8 @@ if __name__ == '__main__':
                 model.save_weights(os.path.join(save_path, 'best_checkpoint'))
                 if index.isin(optimization_history.index):
                     optimization_history.drop(index, inplace=True)
-                if shap_index.isin(mean_output.index):
-                    mean_output.drop(shap_index, inplace=True)
+                if shap_index.isin(mean.index):
+                    mean.drop(shap_index, inplace=True)
                 if shap_index.isin(shap.index):
                     shap.drop(shap_index, inplace=True)
                 optimization_history = pd.concat([optimization_history, pd.DataFrame(
@@ -172,13 +172,13 @@ if __name__ == '__main__':
                     assert max_abs_error == 0.0, 'bad SHAPy cat!'
 
             # compute SHAP values if we don't have them
-            if not shap_index.isin(mean_output.index) or not shap_index.isin(shap.index):
+            if not shap_index.isin(mean.index) or not shap_index.isin(shap.index):
                 tf.keras.utils.set_random_seed(fold_seed)
                 num_background_samples = min(args.max_background, x[i_train].shape[0])
                 e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:num_background_samples].numpy())
-                mean_output_dict = dict(mean=e.expected_value[0].numpy(), std=e.expected_value[1].numpy())
-                mean_output = pd.concat([mean_output, pd.DataFrame(mean_output_dict, shap_index)])
-                mean_output.to_pickle(mean_output_file)
+                mean_dict = dict(mean=e.expected_value[0].numpy(), std=e.expected_value[1].numpy())
+                mean = pd.concat([mean, pd.DataFrame(mean_dict, shap_index)])
+                mean.to_pickle(mean_file)
                 if not shap_index.isin(shap.index):
                     shap_values = e.shap_values(x[i_valid].numpy())
                     shap_dict = dict(sequence=sequence[i_valid].numpy().tolist(),
