@@ -118,6 +118,9 @@ if __name__ == '__main__':
                                                   **{**{'Observations': observations}, **mag['nn_kwargs']})
             print('***** Fold {:d}/{:d}: {:s} *****'.format(fold, args.num_folds, index_str))
 
+            # SHAP index adds fold information
+            shap_index = pd.MultiIndex.from_tuples([index.values[0] + (fold,)], names=index.names + ['Fold'])
+
             # determine where to save model
             save_path = os.path.join(fold_path, observations)
             save_path = model_config_dir(save_path, model, mag['model_kwargs'], mag['nn_kwargs'])
@@ -139,10 +142,10 @@ if __name__ == '__main__':
                 model.save_weights(os.path.join(save_path, 'best_checkpoint'))
                 if index.isin(optimization_history.index):
                     optimization_history.drop(index, inplace=True)
-                if index.isin(mean_output.index):
-                    mean_output.drop(index, inplace=True)
-                if index.isin(shap.index):
-                    shap.drop(index, inplace=True)
+                if shap_index.isin(mean_output.index):
+                    mean_output.drop(shap_index, inplace=True)
+                if shap_index.isin(shap.index):
+                    shap.drop(shap_index, inplace=True)
                 optimization_history = pd.concat([optimization_history, pd.DataFrame(
                     data={'Epoch': np.array(hist.epoch), 'RMSE': hist.history['RMSE']},
                     index=index.repeat(len(hist.epoch)))])
@@ -169,20 +172,19 @@ if __name__ == '__main__':
                     assert max_abs_error == 0.0, 'bad SHAPy cat!'
 
             # compute SHAP values if we don't have them
-            shap_index = pd.MultiIndex.from_tuples([index.values[0] + (fold,)], names=index.names + ['Fold'])
-            if not shap_index.isin(mean_output.index) or not index.isin(shap.index):  # TODO: use SHAP index for SHAP
+            if not shap_index.isin(mean_output.index) or not shap_index.isin(shap.index):
                 tf.keras.utils.set_random_seed(fold_seed)
                 num_background_samples = min(args.max_background, x[i_train].shape[0])
                 e = DeepExplainer(shapy_cat, tf.random.shuffle(x[i_train])[:num_background_samples].numpy())
                 mean_output_dict = dict(mean=e.expected_value[0].numpy(), std=e.expected_value[1].numpy())
                 mean_output = pd.concat([mean_output, pd.DataFrame(mean_output_dict, shap_index)])
                 mean_output.to_pickle(mean_output_file)
-                if not index.isin(shap.index):
+                if not shap_index.isin(shap.index):
                     shap_values = e.shap_values(x[i_valid].numpy())
                     shap_dict = dict(sequence=sequence[i_valid].numpy().tolist(),
                                      mean=shap_values[0].sum(-1).tolist(),
                                      std=shap_values[1].sum(-1).tolist())
-                    shap = pd.concat([shap, pd.DataFrame(shap_dict, index.repeat(x[i_valid].shape[0]))])
+                    shap = pd.concat([shap, pd.DataFrame(shap_dict, shap_index.repeat(x[i_valid].shape[0]))])
                     shap.to_pickle(shap_file)
 
             # clear out memory and enable GPU determinism incase clearing undoes this setting
