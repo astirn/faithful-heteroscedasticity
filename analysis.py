@@ -437,7 +437,7 @@ def vae_plots(model_class, examples_per_class=1):
             fig.savefig(os.path.join('results', '_'.join(['vae', model_class, 'noise', dataset])) + '.pdf')
 
 
-def crispr_motif_plots():
+def crispr_motif_plots(model_class):
 
     def sequence_mask(df):
         return np.array(df.apply(lambda seq: [s == nt for s in seq]).to_list())
@@ -450,12 +450,13 @@ def crispr_motif_plots():
     # loop over datasets with SHAP values
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
         shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
-        mean_output_file = os.path.join('experiments', 'crispr', dataset, 'mean_output.pkl')
+        mean_file = os.path.join('experiments', 'crispr', dataset, 'mean.pkl')
         if os.path.exists(shap_file) and os.path.exists(shap_file):
-            df_shap = drop_unused_index_levels(pd.read_pickle(shap_file).sort_index())
-            df_mean_output = drop_unused_index_levels(pd.read_pickle(mean_output_file).sort_index())
-            df_mean_output = df_mean_output.groupby(['Model', 'Observations']).mean()
+            df_shap = drop_unused_index_levels(filter_model_class(pd.read_pickle(shap_file).sort_index(), model_class))
+            df_mean = drop_unused_index_levels(filter_model_class(pd.read_pickle(mean_file).sort_index(), model_class))
+            df_mean = df_mean.groupby(['Model', 'Observations']).mean()
             df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
+            df_shap = df_shap.droplevel('Fold')
 
             # compute SHAP values
             shap = pd.DataFrame()
@@ -466,15 +467,15 @@ def crispr_motif_plots():
                         mask = sequence_mask(df_shap.loc[idx, 'sequence'])
                         shap_values[nt] = np.array(df_shap.loc[idx, moment].to_list())
                         shap_values[nt] = (mask * shap_values[nt]).sum(0) / mask.sum(0)
-                        shap_values[nt] += df_mean_output.loc[idx, moment] / len(shap_values[nt])
+                        shap_values[nt] += df_mean.loc[idx, moment] / len(shap_values[nt])
                     index = pd.MultiIndex.from_tuples([idx + (moment,)])
                     shap = pd.concat([shap, pd.DataFrame(shap_values, index.repeat(len(shap_values['A'])))])
 
             # make sure below assumptions hold
-            assert df_shap.index.names == df_mean_output.index.names == ['Model', 'Observations']
+            assert df_shap.index.names == df_mean.index.names == ['Model', 'Observations']
             observations = ['replicates', 'means']
             assert set(df_shap.index.unique('Observations')) == set(observations)
-            assert set(df_mean_output.index.unique('Observations')) == set(observations)
+            assert set(df_mean.index.unique('Observations')) == set(observations)
 
             # plot SHAP values for every model
             for model in df_shap.index.unique('Model'):
@@ -502,7 +503,7 @@ def crispr_motif_plots():
                 set_y_limits(ax[2:])
                 plt.tight_layout()
                 model = model.replace(' ', '')
-                fig.savefig(os.path.join('results', '_'.join(['crispr', 'shap', dataset, model]) + '.pdf'))
+                fig.savefig(os.path.join('results', '_'.join(['crispr', model_class, dataset, model]) + '.pdf'))
 
 
 if __name__ == '__main__':
