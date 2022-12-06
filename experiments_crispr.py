@@ -114,7 +114,8 @@ if __name__ == '__main__':
 
             # index for this model and configuration
             model_name = pretty_model_name(model, mag['model_kwargs'])
-            index, index_str = model_config_index(model_name, **{**{'Observations': observations}, **mag['nn_kwargs']})  # TODO: add model class
+            index, index_str = model_config_index(model_name, model.model_class,
+                                                  **{**{'Observations': observations}, **mag['nn_kwargs']})
             print('***** Fold {:d}/{:d}: {:s} *****'.format(fold, args.num_folds, index_str))
 
             # determine where to save model

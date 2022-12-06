@@ -252,14 +252,15 @@ def vae_tables(model_class):
     print_tables(df, 'vae_' + model_class.replace(' ', '_'), non_config_indices=('Model', 'Observations'))
 
 
-def crispr_tables():
+def crispr_tables(model_class):
 
     # loop over datasets with measurements
     df = pd.DataFrame()
     for dataset in os.listdir(os.path.join('experiments', 'crispr')):
         measurements_file = os.path.join('experiments', 'crispr', dataset, 'measurements.pkl')
         if os.path.exists(measurements_file):
-            measurements = drop_unused_index_levels(pd.read_pickle(measurements_file).sort_index())
+            measurements = pd.read_pickle(measurements_file).sort_index()
+            measurements = drop_unused_index_levels(filter_model_class(measurements, model_class))
 
             # analyze performance for each observation type
             for observations in measurements.index.unique('Observations'):
@@ -267,7 +268,7 @@ def crispr_tables():
                 df = pd.concat([df, analyze_performance(obs_performance, dataset)])
 
     # print the tables
-    print_tables(df, 'crispr', non_config_indices=('Model', 'Observations'))
+    print_tables(df, 'crispr_' + model_class.replace(' ', '_'), non_config_indices=('Model', 'Observations'))
 
 
 def toy_convergence_plots(model_class):
@@ -530,6 +531,7 @@ if __name__ == '__main__':
     # UCI experiments
     if args.experiment in {'all', 'uci'} and os.path.exists(os.path.join('experiments', 'uci')):
         uci_tables(args.model_class, normalized=True)
+        # TODO: SHAP analysis
 
     # VAE experiments
     if args.experiment in {'all', 'vae'} and os.path.exists(os.path.join('experiments', 'vae')):
