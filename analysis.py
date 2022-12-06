@@ -452,38 +452,38 @@ def crispr_motif_plots(model_class):
         shap_file = os.path.join('experiments', 'crispr', dataset, 'shap.pkl')
         mean_file = os.path.join('experiments', 'crispr', dataset, 'mean.pkl')
         if os.path.exists(shap_file) and os.path.exists(shap_file):
-            df_shap = drop_unused_index_levels(filter_model_class(pd.read_pickle(shap_file).sort_index(), model_class))
-            df_mean = drop_unused_index_levels(filter_model_class(pd.read_pickle(mean_file).sort_index(), model_class))
-            df_mean = df_mean.groupby(['Model', 'Observations']).mean()
-            df_shap['sequence'] = df_shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
-            df_shap = df_shap.droplevel('Fold')
+            shap = drop_unused_index_levels(filter_model_class(pd.read_pickle(shap_file).sort_index(), model_class))
+            mean = drop_unused_index_levels(filter_model_class(pd.read_pickle(mean_file).sort_index(), model_class))
+            mean = mean.groupby(['Model', 'Observations']).mean()
+            shap['sequence'] = shap['sequence'].apply(lambda seq: seq.decode('utf-8'))
+            shap = shap.droplevel('Fold')
 
             # compute SHAP values
-            shap = pd.DataFrame()
-            for idx in df_shap.index.unique():
+            shap_plot = pd.DataFrame()
+            for idx in shap.index.unique():
                 for moment in ['mean', 'std']:
                     shap_values = dict(A=np.empty(0), C=np.empty(0), G=np.empty(0), T=np.empty(0))
                     for nt in ['A', 'C', 'G', 'T']:
-                        mask = sequence_mask(df_shap.loc[idx, 'sequence'])
-                        shap_values[nt] = np.array(df_shap.loc[idx, moment].to_list())
+                        mask = sequence_mask(shap.loc[idx, 'sequence'])
+                        shap_values[nt] = np.array(shap.loc[idx, moment].to_list())
                         shap_values[nt] = (mask * shap_values[nt]).sum(0) / mask.sum(0)
-                        shap_values[nt] += df_mean.loc[idx, moment] / len(shap_values[nt])
+                        shap_values[nt] += mean.loc[idx, moment] / len(shap_values[nt])
                     index = pd.MultiIndex.from_tuples([idx + (moment,)])
-                    shap = pd.concat([shap, pd.DataFrame(shap_values, index.repeat(len(shap_values['A'])))])
+                    shap_plot = pd.concat([shap_plot, pd.DataFrame(shap_values, index.repeat(len(shap_values['A'])))])
 
             # make sure below assumptions hold
-            assert df_shap.index.names == df_mean.index.names == ['Model', 'Observations']
+            assert shap.index.names == mean.index.names == ['Model', 'Observations']
             observations = ['replicates', 'means']
-            assert set(df_shap.index.unique('Observations')) == set(observations)
-            assert set(df_mean.index.unique('Observations')) == set(observations)
+            assert set(shap.index.unique('Observations')) == set(observations)
+            assert set(mean.index.unique('Observations')) == set(observations)
 
             # plot SHAP values for every model
-            for model in df_shap.index.unique('Model'):
+            for model in shap.index.unique('Model'):
                 fig, ax = plt.subplots(nrows=5, figsize=(10, 15))
                 for i, moment in enumerate(['mean', 'std']):
                     for j, observation in enumerate(['replicates', 'means']):
                         row = 2 * i + j
-                        shap_values = shap.loc[(model, observation, moment), :].reset_index(drop=True)
+                        shap_values = shap_plot.loc[(model, observation, moment), :].reset_index(drop=True)
                         logomaker.Logo(shap_values, flip_below=False, ax=ax[row])
                         moment_name = moment.replace('std', '$\\sqrt{\\mathrm{variance}}$')
                         title = 'SHAP of the estimated {:s} when trained on {:s}'.format(moment_name, observation)
@@ -493,8 +493,8 @@ def crispr_motif_plots(model_class):
                     if moment == 'std':
                         shap_delta = pd.DataFrame()
                         for nt in ['A', 'C', 'G', 'T']:
-                            shap_delta[nt] = shap.loc[(model, 'replicates', 'std'), nt].values
-                            shap_delta[nt] -= shap.loc[(model, 'means', 'std'), nt].values
+                            shap_delta[nt] = shap_plot.loc[(model, 'replicates', 'std'), nt].values
+                            shap_delta[nt] -= shap_plot.loc[(model, 'means', 'std'), nt].values
                         logomaker.Logo(shap_delta, flip_below=False, ax=ax[-1])
                         ax[-1].set_title('SHAP of the estimated $\\sqrt{\\mathrm{noise \\ variance}}$')
 
