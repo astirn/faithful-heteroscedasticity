@@ -188,18 +188,15 @@ def print_table(df, file_name, row_idx=('Dataset',), col_idx=('Model',), models=
 def print_tables(df, experiment, non_config_indices=('Model',)):
     if len(df) == 0:
         return
-    assert df.index.names[0] == 'Model', '"Model" needs to be first index level'
 
     # each configuration gets its own table
-    if df.index.names == non_config_indices:
-        configurations = [tuple()]
-    else:
-        configurations = df.index.droplevel(non_config_indices).unique()
-    for config in configurations:
-        if isinstance(df.index, pd.MultiIndex):
-            df_config = df.loc[(slice(None),) * len(non_config_indices) + config, :]
-        else:
-            df_config = df.loc[(slice(None),) + config]
+    if set(df.index.names) == set(non_config_indices):
+        df['dummy'] = 'index'
+        df.set_index('dummy', append=True, inplace=True)
+    df.reset_index(non_config_indices, inplace=True)
+    for config in df.index.unique():
+        df_config = df.loc[config, :]
+        [df_config.set_index(non_config_index, append=True, inplace=True) for non_config_index in non_config_indices]
         df_config = drop_unused_index_levels(df_config)
 
         # configure table rows and columns
@@ -207,7 +204,7 @@ def print_tables(df, experiment, non_config_indices=('Model',)):
         cols = [rows.pop(rows.index('Model'))]
 
         # print metric tables
-        suffix = [] if len(configurations) == 1 else ['-'.join(config).replace(' ', '')]
+        suffix = [] if df.index.nunique() == 1 else ['-'.join(config).replace(' ', '')]
         for metrics in [['RMSE', 'ECE', 'LL']]:
             file_name = '_'.join([experiment] + [m.lower() for m in metrics] + suffix) + '.tex'
             print_table(df_config[['Dataset'] + metrics].reset_index(), file_name=file_name, row_idx=rows, col_idx=cols)
