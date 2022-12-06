@@ -22,14 +22,14 @@ COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedas
 
 
 def filter_model_class(df, model_class):
-    return df.loc[df.index.get_level_values('Class') == model_class, :].droplevel('Class')
+    return df.loc[df.index.get_level_values('Class') == model_class, :]
 
 
 def drop_unused_index_levels(performance):
 
     # drop index levels with just one unique value
     for level in performance.index.names:
-        if len(performance.index.unique(level)) == 1:
+        if len(performance.index.unique(level)) == 1 and performance.index.nlevels > 1:
             performance.set_index(performance.index.droplevel(level), inplace=True)
 
     return performance
@@ -228,7 +228,7 @@ def uci_tables(model_class, normalized=True):
     print_tables(df, 'uci_' + model_class.replace(' ', '_'))
 
 
-def vae_tables():
+def vae_tables(model_class):
 
     # loop over datasets with measurements
     df = pd.DataFrame()
@@ -237,18 +237,19 @@ def vae_tables():
         measurements_dict_file = os.path.join('experiments', 'vae', dataset, 'measurements_dict.pkl')
         dataset = dataset.replace('_', '-')
         if os.path.exists(measurements_df_file) and os.path.exists(measurements_dict_file):
-            measurements_df = pd.read_pickle(measurements_df_file).sort_index()
+            measurements_df = filter_model_class(pd.read_pickle(measurements_df_file).sort_index(), model_class)
             with open(measurements_dict_file, 'rb') as f:
                 measurements_dict = pickle.load(f)
 
             # analyze performance for each observation type and architecture
-            config_indices = measurements_df.index.to_frame().set_index(measurements_df.index.names[1:])
-            for index in config_indices.index.unique():
-                df_obs_arch = measurements_df.loc[(slice(None),) + index, :]
+            index_names = measurements_df.index.names
+            measurements_df = measurements_df.reset_index(['Model', 'Class']).sort_index()
+            for index in measurements_df.index.unique():
+                df_obs_arch = measurements_df.loc[index, :].reset_index().set_index(index_names)
                 df = pd.concat([df, analyze_performance(df_obs_arch, dataset, z_scores=measurements_dict['Z'])])
 
     # print the tables
-    print_tables(df, 'vae', non_config_indices=('Model', 'Observations'))
+    print_tables(df, 'vae_' + model_class.replace(' ', '_'), non_config_indices=('Model', 'Observations'))
 
 
 def crispr_tables():
