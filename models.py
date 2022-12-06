@@ -234,7 +234,7 @@ class NormalMixture(object):
 
 class MonteCarloDropout(NormalMixture, ABC):
 
-    def __init__(self, *, dropout_rate=0.25, mc_samples=10):
+    def __init__(self, *, dropout_rate=0.25, mc_samples=10, **kwargs):
         NormalMixture.__init__(self)
         self.dropout_rate = dropout_rate
         self.mc_samples = mc_samples
@@ -250,7 +250,7 @@ class MonteCarloDropout(NormalMixture, ABC):
 class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 
     def __init__(self, **kwargs):
-        MonteCarloDropout.__init__(self)
+        MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         UnitVarianceNormal.__init__(self, name='UnitVarianceMonteCarloDropout', **kwargs)
 
@@ -263,7 +263,7 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
 class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        MonteCarloDropout.__init__(self)
+        MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
 
@@ -277,7 +277,7 @@ class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal)
 class FaithfulHeteroscedasticMonteCarloDropout(MonteCarloDropout, FaithfulHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        MonteCarloDropout.__init__(self)
+        MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
         FaithfulHeteroscedasticNormal.__init__(self, name='FaithfulHeteroscedasticMonteCarloDropout', **kwargs)
 
