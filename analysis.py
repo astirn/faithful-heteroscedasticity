@@ -540,9 +540,9 @@ if __name__ == '__main__':
         vae_plots(args.model_class)
 
     # CRISPR tables and figures
-    if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):  # TODO: add model class support
-        crispr_tables()
-        crispr_motif_plots()
+    if args.experiment in {'all', 'crispr'} and os.path.exists(os.path.join('experiments', 'crispr')):
+        crispr_tables(args.model_class)
+        crispr_motif_plots(args.model_class)
 
     # show plots
     plt.show()
