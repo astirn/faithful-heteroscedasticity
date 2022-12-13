@@ -31,6 +31,8 @@ def pretty_model_name(model, model_kwargs):
         name = 'Beta NLL'
         if 'beta' in model_kwargs.keys():
             name = name + ' (' + str(model_kwargs['beta']) + ')'
+    elif model.name == 'Proposal1Normal':
+        name = 'Proposal 1 Normal'
     elif 'VBEM' in model.name:
         name = model.name
     else:

@@ -13,8 +13,8 @@ HETEROSCEDASTIC_MODELS = (
     'Heteroscedastic',
     'Beta NLL (0.5)',
     'Beta NLL (1.0)',
-    'Second Order Mean',
     'VBEM',
+    'Proposal 1',
     'Faithful Heteroscedastic',
 )
 MODELS = ('Unit Variance',) + HETEROSCEDASTIC_MODELS

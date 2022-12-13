@@ -147,10 +147,10 @@ class BetaNLL(HeteroscedasticNormal):
         return params
 
 
-class SecondOrderMean(HeteroscedasticNormal):
+class Proposal1Normal(HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
-        super().__init__(name='SecondOrderMean', **kwargs)
+        super().__init__(name='Proposal1Normal', **kwargs)
 
     def optimization_step(self, x, y):
 
@@ -178,7 +178,7 @@ class SecondOrderMean(HeteroscedasticNormal):
         return params
 
 
-class FaithfulNormal(Normal):
+class FaithfulNormalOptimization(Normal):
 
     def __int__(self, **kwargs):
         super().__init__(**kwargs)
@@ -194,7 +194,7 @@ class FaithfulNormal(Normal):
         return params
 
 
-class FaithfulHeteroscedasticNormal(FaithfulNormal, HeteroscedasticNormal):
+class FaithfulHeteroscedasticNormal(FaithfulNormalOptimization, HeteroscedasticNormal):
 
     def __init__(self, **kwargs):
         super().__init__(name=kwargs.pop('name', 'FaithfulHeteroscedasticNormal'), **kwargs)
@@ -337,7 +337,7 @@ class HeteroscedasticDeepEnsemble(UnitVarianceDeepEnsemble):
         return {'loc': loc, 'scale': scale}
 
 
-class FaithfulHeteroscedasticDeepEnsemble(FaithfulNormal, HeteroscedasticDeepEnsemble):
+class FaithfulHeteroscedasticDeepEnsemble(FaithfulNormalOptimization, HeteroscedasticDeepEnsemble):
 
     def __init__(self, **kwargs):
         super().__init__(name=kwargs.pop('name', 'FaithfulHeteroscedasticDeepEnsemble'), **kwargs)
@@ -549,10 +549,10 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None, de_kwargs=None, st
     models = [
         dict(model=UnitVarianceNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=HeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=FaithfulHeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=SecondOrderMean, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
+        dict(model=Proposal1Normal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=FaithfulHeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
     ]
 
     # Monte Carlo Dropout models
@@ -664,8 +664,8 @@ if __name__ == '__main__':
         model = HeteroscedasticNormal
     elif args.model == 'FaithfulHeteroscedasticNormal':
         model = FaithfulHeteroscedasticNormal
-    elif args.model == 'SecondOrderMean':
-        model = SecondOrderMean
+    elif args.model == 'Proposal1Normal':
+        model = Proposal1Normal
     elif args.model == 'BetaNLL':
         model = BetaNLL
     elif args.model == 'UnitVarianceMonteCarloDropout':
