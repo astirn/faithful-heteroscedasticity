@@ -13,7 +13,7 @@ HETEROSCEDASTIC_MODELS = (
     'Heteroscedastic',
     'Beta NLL (0.5)',
     'Beta NLL (1.0)',
-    'VBEM',
+    'VBEM*',
     'Proposal 1',
     'Proposal 2',
     'Faithful Heteroscedastic',

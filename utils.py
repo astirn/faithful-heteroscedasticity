@@ -36,7 +36,7 @@ def pretty_model_name(model, model_kwargs):
     elif model.name == 'Proposal2Normal':
         name = 'Proposal 2 Normal'
     elif 'VBEM' in model.name:
-        name = model.name
+        name = 'VBEM*'
     else:
         name = ''.join(' ' + char if char.isupper() else char.strip() for char in model.name).strip()
 
