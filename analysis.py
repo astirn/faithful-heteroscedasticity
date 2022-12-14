@@ -11,7 +11,7 @@ import seaborn as sns
 
 MEAN_ONLY = 'Unit Variance Homoscedastic'
 HETEROSCEDASTIC_MODELS = (
-    'Vanilla Heteroscedastic',
+    'Conventional Heteroscedastic',
     'Beta NLL (0.5)',
     'Beta NLL (1.0)',
     'VBEM*',
