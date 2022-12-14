@@ -101,10 +101,10 @@ class Normal(Regression):
         return params
 
 
-class UnitVarianceNormal(Normal):
+class UnitVarianceHomoscedasticNormal(Normal):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        super().__init__(name=kwargs.pop('name', 'UnitVarianceNormal'), **kwargs)
+        super().__init__(name=kwargs.pop('name', 'UnitVarianceHomoscedasticNormal'), **kwargs)
         if f_trunk is None:
             self.f_trunk = lambda x, **k: x
             self.dim_f_trunk = dim_x
@@ -118,10 +118,10 @@ class UnitVarianceNormal(Normal):
         return {'loc': mean, 'scale': tf.ones_like(mean)}
 
 
-class HeteroscedasticNormal(UnitVarianceNormal):
+class VanillaHeteroscedasticNormal(UnitVarianceHomoscedasticNormal):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        name = kwargs.pop('name', 'HeteroscedasticNormal')
+        name = kwargs.pop('name', 'VanillaHeteroscedasticNormal')
         super().__init__(dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param, name=name, **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
 
@@ -130,7 +130,7 @@ class HeteroscedasticNormal(UnitVarianceNormal):
         return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(z, **kwargs)}
 
 
-class BetaNLL(HeteroscedasticNormal):
+class BetaNLL(VanillaHeteroscedasticNormal):
 
     def __init__(self, *, beta=0.5, **kwargs):
         super().__init__(name='BetaNLL', **kwargs)
@@ -147,7 +147,7 @@ class BetaNLL(HeteroscedasticNormal):
         return params
 
 
-class Proposal1Normal(HeteroscedasticNormal):
+class Proposal1Normal(VanillaHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
         super().__init__(name='Proposal1Normal', **kwargs)
@@ -178,7 +178,7 @@ class Proposal1Normal(HeteroscedasticNormal):
         return params
 
 
-class Proposal2Normal(HeteroscedasticNormal):
+class Proposal2Normal(VanillaHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
         super().__init__(name='Proposal2Normal', **kwargs)
@@ -204,7 +204,7 @@ class FaithfulNormalOptimization(Normal):
         return params
 
 
-class FaithfulHeteroscedasticNormal(FaithfulNormalOptimization, HeteroscedasticNormal):
+class FaithfulHeteroscedasticNormal(FaithfulNormalOptimization, VanillaHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
         super().__init__(name=kwargs.pop('name', 'FaithfulHeteroscedasticNormal'), **kwargs)
@@ -257,12 +257,12 @@ class MonteCarloDropout(NormalMixture, ABC):
         return tf.stack([self.mc_samples, tf.shape(x)[0], -1])
 
 
-class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
+class UnitVarianceHomoscedasticMonteCarloDropout(MonteCarloDropout, UnitVarianceHomoscedasticNormal):
 
     def __init__(self, **kwargs):
         MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
-        UnitVarianceNormal.__init__(self, name='UnitVarianceMonteCarloDropout', **kwargs)
+        UnitVarianceHomoscedasticNormal.__init__(self, name='UnitVarianceHomoscedasticMonteCarloDropout', **kwargs)
 
     def call(self, x, **kwargs):
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
@@ -270,12 +270,12 @@ class UnitVarianceMonteCarloDropout(MonteCarloDropout, UnitVarianceNormal):
         return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
 
 
-class HeteroscedasticMonteCarloDropout(MonteCarloDropout, HeteroscedasticNormal):
+class VanillaHeteroscedasticMonteCarloDropout(MonteCarloDropout, VanillaHeteroscedasticNormal):
 
     def __init__(self, **kwargs):
         MonteCarloDropout.__init__(self, **kwargs)
         kwargs.update(dict(dropout_rate=self.dropout_rate))
-        HeteroscedasticNormal.__init__(self, name='HeteroscedasticMonteCarloDropout', **kwargs)
+        VanillaHeteroscedasticNormal.__init__(self, name='VanillaHeteroscedasticMonteCarloDropout', **kwargs)
 
     def call(self, x, **kwargs):
         z = tf.concat([self.f_trunk(x, training=True) for _ in range(self.mc_samples)], axis=0)
@@ -310,10 +310,10 @@ class DeepEnsemble(NormalMixture, Normal, ABC):
         return 'Deep Ensemble'
 
 
-class UnitVarianceDeepEnsemble(DeepEnsemble):
+class UnitVarianceHomoscedasticDeepEnsemble(DeepEnsemble):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        super().__init__(name=kwargs.pop('name', 'UnitVarianceDeepEnsemble'), **kwargs)
+        super().__init__(name=kwargs.pop('name', 'UnitVarianceHomoscedasticDeepEnsemble'), **kwargs)
         self.f_trunk = []
         self.f_loc = []
         for m in range(self.num_models):
@@ -331,10 +331,10 @@ class UnitVarianceDeepEnsemble(DeepEnsemble):
         return {'loc': loc, 'scale': tf.ones(tf.shape(loc))}
 
 
-class HeteroscedasticDeepEnsemble(UnitVarianceDeepEnsemble):
+class VanillaHeteroscedasticDeepEnsemble(UnitVarianceHomoscedasticDeepEnsemble):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        name = kwargs.pop('name', 'HeteroscedasticDeepEnsemble')
+        name = kwargs.pop('name', 'VanillaHeteroscedasticDeepEnsemble')
         super().__init__(dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param, name=name, **kwargs)
         self.f_scale = []
         for m in range(self.num_models):
@@ -347,7 +347,7 @@ class HeteroscedasticDeepEnsemble(UnitVarianceDeepEnsemble):
         return {'loc': loc, 'scale': scale}
 
 
-class FaithfulHeteroscedasticDeepEnsemble(FaithfulNormalOptimization, HeteroscedasticDeepEnsemble):
+class FaithfulHeteroscedasticDeepEnsemble(FaithfulNormalOptimization, VanillaHeteroscedasticDeepEnsemble):
 
     def __init__(self, **kwargs):
         super().__init__(name=kwargs.pop('name', 'FaithfulHeteroscedasticDeepEnsemble'), **kwargs)
@@ -378,10 +378,10 @@ class Student(Regression):
         return tfpd.StudentT(**params)
 
 
-class UnitVarianceStudent(Student):
+class UnitVarianceHomoscedasticStudent(Student):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        super().__init__(name=kwargs.pop('name', 'UnitVarianceStudent'), **kwargs)
+        super().__init__(name=kwargs.pop('name', 'UnitVarianceHomoscedasticStudent'), **kwargs)
         if f_trunk is None:
             self.f_trunk = lambda x, **k: x
             self.dim_f_trunk = dim_x
@@ -406,10 +406,10 @@ class UnitVarianceStudent(Student):
         return params
 
 
-class HeteroscedasticStudent(UnitVarianceStudent):
+class VanillaHeteroscedasticStudent(UnitVarianceHomoscedasticStudent):
 
     def __init__(self, *, dim_x, dim_y, f_trunk=None, f_param, **kwargs):
-        name = kwargs.pop('name', 'HeteroscedasticStudent')
+        name = kwargs.pop('name', 'VanillaHeteroscedasticStudent')
         super().__init__(dim_x=dim_x, dim_y=dim_y, f_trunk=f_trunk, f_param=f_param, name=name, **kwargs)
         self.f_df = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_df', **kwargs)
         self.f_scale = f_param(d_in=self.dim_f_trunk, d_out=dim_y, f_out='softplus', name='f_scale', **kwargs)
@@ -431,10 +431,10 @@ class HeteroscedasticStudent(UnitVarianceStudent):
         return params
 
 
-class FaithfulHeteroscedasticStudent(HeteroscedasticStudent):
+class FaithfulHeteroscedasticStudent(VanillaHeteroscedasticStudent):
 
     def __init__(self, **kwargs):
-        HeteroscedasticStudent.__init__(self, name='FaithfulHeteroscedasticStudent', **kwargs)
+        VanillaHeteroscedasticStudent.__init__(self, name='FaithfulHeteroscedasticStudent', **kwargs)
 
     def call(self, x, **kwargs):
         z = self.f_trunk(x, **kwargs)
@@ -557,8 +557,8 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None, de_kwargs=None, st
 
     # Normal models
     models = [
-        dict(model=UnitVarianceNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
-        dict(model=HeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=UnitVarianceHomoscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=VanillaHeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
         dict(model=Proposal1Normal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
@@ -572,24 +572,24 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None, de_kwargs=None, st
         if 'd_hidden' in mcd_nn_kwargs.keys() and len(mcd_nn_kwargs.get('d_hidden')) == 1:
             mcd_nn_kwargs.update(dict(d_hidden=2 * mcd_nn_kwargs['d_hidden']))
         models += [
-            dict(model=UnitVarianceMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
-            dict(model=HeteroscedasticMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
+            dict(model=UnitVarianceHomoscedasticMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
+            dict(model=VanillaHeteroscedasticMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
             dict(model=FaithfulHeteroscedasticMonteCarloDropout, model_kwargs=mcd_kwargs, nn_kwargs=mcd_nn_kwargs),
         ]
 
     # Deep Ensemble models
     if de_kwargs is not None:
         models += [
-            dict(model=UnitVarianceDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
-            dict(model=HeteroscedasticDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=UnitVarianceHomoscedasticDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=VanillaHeteroscedasticDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
             dict(model=FaithfulHeteroscedasticDeepEnsemble, model_kwargs=de_kwargs, nn_kwargs=nn_kwargs),
         ]
 
     # Student models
     if student_kwargs is not None:
         models += [
-            dict(model=UnitVarianceStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
-            dict(model=HeteroscedasticStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=UnitVarianceHomoscedasticStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
+            dict(model=VanillaHeteroscedasticStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
             dict(model=FaithfulHeteroscedasticStudent, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
             dict(model=VBEM, model_kwargs=student_kwargs, nn_kwargs=nn_kwargs),
         ]
@@ -668,11 +668,11 @@ if __name__ == '__main__':
     toy_data = generate_toy_data()
 
     # pick the appropriate model
-    if args.model == 'UnitVarianceNormal':
+    if args.model == 'UnitVarianceHomoscedasticNormal':
         args.architecture = 'single'
-        model = UnitVarianceNormal
-    elif args.model == 'HeteroscedasticNormal':
-        model = HeteroscedasticNormal
+        model = UnitVarianceHomoscedasticNormal
+    elif args.model == 'VanillaHeteroscedasticNormal':
+        model = VanillaHeteroscedasticNormal
     elif args.model == 'FaithfulHeteroscedasticNormal':
         model = FaithfulHeteroscedasticNormal
     elif args.model == 'Proposal1Normal':
@@ -681,22 +681,22 @@ if __name__ == '__main__':
         model = Proposal2Normal
     elif args.model == 'BetaNLL':
         model = BetaNLL
-    elif args.model == 'UnitVarianceMonteCarloDropout':
-        model = UnitVarianceMonteCarloDropout
-    elif args.model == 'HeteroscedasticMonteCarloDropout':
-        model = HeteroscedasticMonteCarloDropout
+    elif args.model == 'UnitVarianceHomoscedasticMonteCarloDropout':
+        model = UnitVarianceHomoscedasticMonteCarloDropout
+    elif args.model == 'VanillaHeteroscedasticMonteCarloDropout':
+        model = VanillaHeteroscedasticMonteCarloDropout
     elif args.model == 'FaithfulHeteroscedasticMonteCarloDropout':
         model = FaithfulHeteroscedasticMonteCarloDropout
-    elif args.model == 'UnitVarianceDeepEnsemble':
-        model = UnitVarianceDeepEnsemble
-    elif args.model == 'HeteroscedasticDeepEnsemble':
-        model = HeteroscedasticDeepEnsemble
+    elif args.model == 'UnitVarianceHomoscedasticDeepEnsemble':
+        model = UnitVarianceHomoscedasticDeepEnsemble
+    elif args.model == 'VanillaHeteroscedasticDeepEnsemble':
+        model = VanillaHeteroscedasticDeepEnsemble
     elif args.model == 'FaithfulHeteroscedasticDeepEnsemble':
         model = FaithfulHeteroscedasticDeepEnsemble
-    elif args.model == 'UnitVarianceStudent':
-        model = UnitVarianceStudent
-    elif args.model == 'HeteroscedasticStudent':
-        model = HeteroscedasticStudent
+    elif args.model == 'UnitVarianceHomoscedasticStudent':
+        model = UnitVarianceHomoscedasticStudent
+    elif args.model == 'VanillaHeteroscedasticStudent':
+        model = VanillaHeteroscedasticStudent
     elif args.model == 'FaithfulHeteroscedasticStudent':
         model = FaithfulHeteroscedasticStudent
     elif args.model == 'VBEM':
