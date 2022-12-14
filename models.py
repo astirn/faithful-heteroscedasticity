@@ -178,6 +178,16 @@ class Proposal1Normal(HeteroscedasticNormal):
         return params
 
 
+class Proposal2Normal(HeteroscedasticNormal):
+
+    def __init__(self, **kwargs):
+        super().__init__(name='Proposal2Normal', **kwargs)
+
+    def call(self, x, **kwargs):
+        z = self.f_trunk(x, **kwargs)
+        return {'loc': self.f_mean(z, **kwargs), 'scale': self.f_scale(tf.stop_gradient(z), **kwargs)}
+
+
 class FaithfulNormalOptimization(Normal):
 
     def __int__(self, **kwargs):
@@ -552,6 +562,7 @@ def get_models_and_configurations(nn_kwargs, mcd_kwargs=None, de_kwargs=None, st
         dict(model=BetaNLL, model_kwargs=dict(beta=0.5), nn_kwargs=nn_kwargs),
         dict(model=BetaNLL, model_kwargs=dict(beta=1.0), nn_kwargs=nn_kwargs),
         dict(model=Proposal1Normal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
+        dict(model=Proposal2Normal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
         dict(model=FaithfulHeteroscedasticNormal, model_kwargs=dict(), nn_kwargs=nn_kwargs),
     ]
 
@@ -666,6 +677,8 @@ if __name__ == '__main__':
         model = FaithfulHeteroscedasticNormal
     elif args.model == 'Proposal1Normal':
         model = Proposal1Normal
+    elif args.model == 'Proposal2Normal':
+        model = Proposal2Normal
     elif args.model == 'BetaNLL':
         model = BetaNLL
     elif args.model == 'UnitVarianceMonteCarloDropout':
