@@ -4,11 +4,10 @@ import pandas as pd
 from utils import pretty_model_name
 
 # experiment path
-path = 'experiments/uci'
+path = 'experiments/convergence'
 
 # rename dictionary
-rename_dict = {'UnitVariance': 'UnitVarianceHomoscedastic',
-               'Heteroscedastic': 'VanillaHeteroscedastic'}
+rename_dict = dict()
 
 
 # dummy model object
