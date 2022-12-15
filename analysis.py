@@ -22,13 +22,27 @@ HETEROSCEDASTIC_MODELS = (
 MODELS = (MEAN_ONLY,) + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 CONVERGENCE_SUBTITLES = {
-    'Normal': {'Unit Variance Homoscedastic': '\n(mean-only per definition 1)',
-               'Conventional Heteroscedastic': '\n(Nix and Weigend, 1994)',
-               'Beta NLL (0.5)': '\n(Seitzer et al., 2022)',
-               'Beta NLL (1.0)': '\n(Seitzer et al., 2022)',
-               'Proposal 1': '\n(Ours)',
-               'Proposal 2': '\n(Ours)',
-               'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'}
+    'Normal': {
+        'Unit Variance Homoscedastic': '\n(mean-only per definition 1)',
+        'Conventional Heteroscedastic': '\n(Nix and Weigend, 1994)',
+        'Beta NLL (0.5)': '\n(Seitzer et al., 2022)',
+        'Beta NLL (1.0)': '\n(Seitzer et al., 2022)',
+        'Proposal 1': '\n(Ours)',
+        'Proposal 2': '\n(Ours)',
+        'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'},
+    'Deep Ensemble': {
+        'Unit Variance Homoscedastic': '\n(mean-only baseline)',
+        'Conventional Heteroscedastic': '\n(Lakshminarayanan et al., 2017)',
+        'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'},
+    'Monte Carlo Dropout': {
+        'Unit Variance Homoscedastic': '\n(mean-only baseline)',
+        'Conventional Heteroscedastic': '\n(Kendall and Gal, 2017)',
+        'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'},
+    'Student': {
+        'Unit Variance Homoscedastic': '\n(mean-only baseline)',
+        'Conventional Heteroscedastic': '\n(Takahashi et al., 2018)',
+        'VBEM*': '\n(Stirn and Knowles, 2020)',
+        'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'},
 }
 
 
