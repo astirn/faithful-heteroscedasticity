@@ -21,6 +21,15 @@ HETEROSCEDASTIC_MODELS = (
 )
 MODELS = (MEAN_ONLY,) + HETEROSCEDASTIC_MODELS
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
+CONVERGENCE_SUBTITLES = {
+    'Normal': {'Unit Variance Homoscedastic': '\n(mean-only per definition 1)',
+               'Conventional Heteroscedastic': '\n(Nix and Weigend, 1994)',
+               'Beta NLL (0.5)': '\n(Seitzer et al., 2022)',
+               'Beta NLL (1.0)': '\n(Seitzer et al., 2022)',
+               'Proposal 1': '\n(Ours)',
+               'Proposal 2': '\n(Ours)',
+               'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'}
+}
 
 
 def filter_model_class(df, model_class):
@@ -296,7 +305,7 @@ def toy_convergence_plots(model_class):
     for i, model in enumerate(models):
 
         # title
-        ax[0, i].set_title(model)
+        ax[0, i].set_title(model + CONVERGENCE_SUBTITLES[model_class][model])
 
         # plot data
         sizes = 12.5 * np.ones_like(data['x_train'])
