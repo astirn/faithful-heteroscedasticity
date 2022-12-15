@@ -1,15 +1,15 @@
-\begin{tabular}{ll|ccc|ccc|ccc|ccc|ccc|ccc}
+\begin{tabular}{ll|ccc|ccc|ccc|ccc|ccc|ccc|ccc}
 \toprule
- &  & \multicolumn{3}{|c}{Unit Variance Homoscedastic} & \multicolumn{3}{|c}{Conventional Heteroscedastic} & \multicolumn{3}{|c}{Beta NLL (0.5)} & \multicolumn{3}{|c}{Beta NLL (1.0)} & \multicolumn{3}{|c}{Proposal 1} & \multicolumn{3}{|c}{Faithful Heteroscedastic} \\
- &  & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL \\
-Dataset & Observations &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\
+ &  & \multicolumn{3}{|c}{Unit Variance Homoscedastic} & \multicolumn{3}{|c}{Conventional Heteroscedastic} & \multicolumn{3}{|c}{Beta NLL (0.5)} & \multicolumn{3}{|c}{Beta NLL (1.0)} & \multicolumn{3}{|c}{Proposal 1} & \multicolumn{3}{|c}{Proposal 2} & \multicolumn{3}{|c}{Faithful Heteroscedastic} \\
+ &  & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL & RMSE & ECE & LL \\
+Dataset & Observations &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  \\
 \midrule
-\multirow[t]{2}{*}{flow-cytometry} & means & 0.279 & 0.0209 & -0.958 & \sout{0.285} & \sout{0.0925} & \sout{-11.4} & \textbf{0.272} & \textbf{0.0214} & -1.27 & \textbf{0.274} & 0.0258 & -1.25 & \sout{0.297} & \sout{0.0088} & \sout{-0.915} & 0.279 & 0.0219 & \textbf{-1.04} \\
- & replicates & 0.294 & 0.00673 & -0.962 & 0.295 & 0.0117 & -1.2 & \textbf{0.286} & 0.00697 & -0.658 & 0.294 & 0.00695 & -0.65 & \sout{0.304} & \sout{0.00925} & \sout{-1.12} & 0.294 & \textbf{0.00459} & \textbf{-0.511} \\
-\multirow[t]{2}{*}{junction-targets} & means & 0.31 & 0.00596 & -0.967 & \sout{0.313} & \sout{0.000577} & \sout{-0.251} & \textbf{0.309} & 0.00131 & -0.337 & \textbf{0.309} & 0.00066 & -0.262 & \sout{0.314} & \sout{0.000948} & \sout{-0.328} & \textbf{0.31} & \textbf{0.000599} & \textbf{-0.248} \\
- & replicates & 0.36 & 0.00158 & -0.984 & \sout{0.361} & \sout{0.000324} & \sout{-0.422} & \textbf{0.36} & 0.000311 & -0.422 & \textbf{0.36} & 0.000243 & -0.406 & \sout{0.363} & \sout{0.00033} & \sout{-0.437} & \textbf{0.36} & \textbf{0.000206} & \textbf{-0.394} \\
-\multirow[t]{2}{*}{off-target} & means & 0.304 & 0.0178 & -0.965 & \sout{0.309} & \sout{0.0111} & \sout{-1.92} & \textbf{0.298} & 0.00362 & -0.261 & 0.301 & 0.00271 & -0.211 & \sout{0.308} & \sout{0.0033} & \sout{-0.282} & 0.304 & \textbf{0.00235} & \textbf{-0.194} \\
- & replicates & 0.346 & 0.00281 & -0.979 & \sout{0.349} & \sout{0.00128} & \sout{-0.45} & \textbf{0.345} & 0.000663 & -0.337 & \sout{0.348} & \sout{0.000551} & \sout{-0.332} & \sout{0.352} & \sout{0.000859} & \sout{-0.403} & \textbf{0.346} & \textbf{0.000453} & \textbf{-0.316} \\
-\textit{{Total wins or ties}} &  & -- & -- & -- & \textit{0} & \textit{0} & \textit{0} & \textit{6} & \textit{1} & \textit{0} & \textit{3} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{3} & \textit{5} & \textit{6} \\
+\multirow[t]{2}{*}{flow-cytometry} & means & 0.279 & 0.0209 & -0.958 & \sout{0.285} & \sout{0.0925} & \sout{-11.4} & \textbf{0.272} & \textbf{0.0214} & -1.27 & \textbf{0.274} & 0.0258 & -1.25 & \sout{0.297} & \sout{0.0088} & \sout{-0.915} & \sout{0.289} & \sout{0.0599} & \sout{-5.21} & 0.279 & 0.0219 & \textbf{-1.04} \\
+ & replicates & 0.294 & 0.00673 & -0.962 & 0.295 & 0.0117 & -1.2 & \textbf{0.286} & 0.00697 & -0.658 & 0.294 & 0.00695 & -0.65 & \sout{0.304} & \sout{0.00925} & \sout{-1.12} & \sout{0.301} & \sout{0.00635} & \sout{-0.697} & 0.294 & \textbf{0.00459} & \textbf{-0.511} \\
+\multirow[t]{2}{*}{junction-targets} & means & 0.31 & 0.00596 & -0.967 & \sout{0.313} & \sout{0.000577} & \sout{-0.251} & \textbf{0.309} & 0.00131 & -0.337 & \textbf{0.309} & 0.00066 & -0.262 & \sout{0.314} & \sout{0.000948} & \sout{-0.328} & \sout{0.312} & \sout{0.000578} & \sout{-0.246} & \textbf{0.31} & \textbf{0.000599} & \textbf{-0.248} \\
+ & replicates & 0.36 & 0.00158 & -0.984 & \sout{0.361} & \sout{0.000324} & \sout{-0.422} & \textbf{0.36} & 0.000311 & -0.422 & \textbf{0.36} & 0.000243 & -0.406 & \sout{0.363} & \sout{0.00033} & \sout{-0.437} & \sout{0.361} & \sout{0.000183} & \sout{-0.391} & \textbf{0.36} & \textbf{0.000206} & \textbf{-0.394} \\
+\multirow[t]{2}{*}{off-target} & means & 0.304 & 0.0178 & -0.965 & \sout{0.309} & \sout{0.0111} & \sout{-1.92} & \textbf{0.298} & 0.00362 & -0.261 & 0.301 & 0.00271 & -0.211 & \sout{0.308} & \sout{0.0033} & \sout{-0.282} & \sout{0.318} & \sout{0.00433} & \sout{-0.439} & 0.304 & \textbf{0.00235} & \textbf{-0.194} \\
+ & replicates & 0.346 & 0.00281 & -0.979 & \sout{0.349} & \sout{0.00128} & \sout{-0.45} & \textbf{0.345} & 0.000663 & -0.337 & \sout{0.348} & \sout{0.000551} & \sout{-0.332} & \sout{0.352} & \sout{0.000859} & \sout{-0.403} & \sout{0.351} & \sout{0.000869} & \sout{-0.381} & \textbf{0.346} & \textbf{0.000453} & \textbf{-0.316} \\
+\textit{{Total wins or ties}} &  & -- & -- & -- & \textit{0} & \textit{0} & \textit{0} & \textit{6} & \textit{1} & \textit{0} & \textit{3} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{0} & \textit{3} & \textit{5} & \textit{6} \\
 \bottomrule
 \end{tabular}
