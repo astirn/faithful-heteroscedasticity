@@ -8,17 +8,16 @@ import tensorflow as tf
 
 from datasets import generate_toy_data
 from metrics import RootMeanSquaredError
-from models import f_neural_net, get_models_and_configurations
+from models import f_hidden_layers, f_output_layer, get_models_and_configurations
 from utils import model_config_index, pretty_model_name
 
 # script arguments
 parser = argparse.ArgumentParser()
-parser.add_argument('--dim_hidden', type=int, default=50, help='number of units in hidden layer')
 parser.add_argument('--epoch_modulo', type=int, default=2000, help='number of epochs between logging results')
-parser.add_argument('--epochs', type=int, default=30000, help='number of training epochs')
+parser.add_argument('--epochs', type=int, default=20000, help='number of training epochs')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--replace', action='store_true', default=False, help='whether to replace saved model')
-parser.add_argument('--seed', type=int, default=123456789, help='random number seed for reproducibility')
+parser.add_argument('--seed', type=int, default=112358, help='random number seed for reproducibility')
 args = parser.parse_args()
 
 # make experimental directory base path
@@ -40,8 +39,8 @@ dim_y = data['y_train'].shape[1]
 
 # models, architectures and configurations to run
 models_and_configurations = get_models_and_configurations(
-    nn_kwargs=dict(f_trunk=None, f_param=f_neural_net, d_hidden=(args.dim_hidden,)),
-    mcd_kwargs=dict(mc_samples=1000), de_kwargs=dict(), student_kwargs=dict())
+    nn_kwargs=dict(f_trunk=f_hidden_layers, f_param=f_output_layer, d_hidden=(50,)),
+    mcd_kwargs=dict(mc_samples=250), de_kwargs=dict(), student_kwargs=dict())
 
 # initialize/load optimization history
 opti_history_file = os.path.join(exp_path, 'optimization_history.pkl')
