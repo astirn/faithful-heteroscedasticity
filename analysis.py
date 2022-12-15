@@ -344,7 +344,7 @@ def toy_convergence_plots(model_class):
         # true mean and standard deviation
         ax[0, i].plot(data['x_test'], data['target_mean'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
         ax[1, i].plot(data['x_test'], data['target_std'], alpha=0.5, color='black', linestyle=':', linewidth=3.5)
-        ax[0, i].set_ylim([-15, 20])
+        ax[0, i].set_ylim([-14, 19])
         ax[1, i].set_ylim([0, 6])
 
         # clean up labels
