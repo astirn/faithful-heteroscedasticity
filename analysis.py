@@ -20,6 +20,7 @@ HETEROSCEDASTIC_MODELS = (
     'Faithful Heteroscedastic',
 )
 MODELS = (MEAN_ONLY,) + HETEROSCEDASTIC_MODELS
+ABLATION_TESTS = ('Proposal 1', 'Proposal 2')
 COMPETITIVE_MODELS = ('Beta NLL (0.5)', 'Beta NLL (1.0)', 'Faithful Heteroscedastic')
 CONVERGENCE_SUBTITLES = {
     'Normal': {
@@ -391,7 +392,7 @@ def vae_plots(model_class, examples_per_class=1):
 
             # prepare performance plot
             models = set(MODELS).intersection(set(measurements_df.index.unique('Model')))
-            models = [model for model in MODELS if model in models]
+            models = [model for model in MODELS if (model in models) and (model not in ABLATION_TESTS)]
             fig, ax = plt.subplots(nrows=1 + len(models), ncols=2, figsize=(16, 2 * (1 + len(models))))
 
             # plot data
@@ -402,9 +403,11 @@ def vae_plots(model_class, examples_per_class=1):
                 ax[0, col].set_xticks([])
                 ax[0, col].set_yticks([])
 
-            # plot each model's performance
+            # plot each model's performance (but skip ablation tests)
             for index in measurements_df.index.unique():
                 index_dict = dict(zip(measurements_df.index.names, index))
+                if index_dict['Model'] in ABLATION_TESTS:
+                    continue
 
                 # gather moments
                 mean = concat_examples(measurements_dict['Mean'][str(index_dict)], i_plot)
@@ -424,7 +427,7 @@ def vae_plots(model_class, examples_per_class=1):
 
             # prepare variance decomposition plot
             models = set(HETEROSCEDASTIC_MODELS).intersection(set(measurements_df.index.unique('Model')))
-            models = [model for model in HETEROSCEDASTIC_MODELS if model in models]
+            models = [model for model in HETEROSCEDASTIC_MODELS if (model in models) and (model not in ABLATION_TESTS)]
             fig, ax = plt.subplots(nrows=1 + len(models), figsize=(8, 1.25 * (1 + len(models))))
             x = concat_examples(measurements_dict['Noise variance']['corrupt']) ** 0.5
             ax[0].imshow(x, cmap='gray_r', vmin=0, vmax=5)
