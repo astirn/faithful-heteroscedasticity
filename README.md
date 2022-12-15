@@ -31,7 +31,10 @@ The latter will contain the plots and tables from our manuscript.
 ### Convergence Experiments
 ```
 python3 experiments_convergence.py
-python3 analysis.py --experiment convergence
+python3 analysis.py --experiment convergence --model_class "Normal"
+python3 analysis.py --experiment convergence --model_class "Deep Ensemble"
+python3 analysis.py --experiment convergence --model_class "Monte Carlo Dropout"
+python3 analysis.py --experiment convergence --model_class "Student"
 ```
 
 ### UCI Regression Experiments
@@ -47,7 +50,10 @@ python3 experiments_uci.py --dataset superconductivity
 python3 experiments_uci.py --dataset wine-red
 python3 experiments_uci.py --dataset wine-white
 python3 experiments_uci.py --dataset yacht
-python3 analysis.py --experiment uci
+python3 analysis.py --experiment uci --model_class "Normal"
+python3 analysis.py --experiment uci --model_class "Deep Ensemble"
+python3 analysis.py --experiment uci --model_class "Monte Carlo Dropout"
+python3 analysis.py --experiment uci --model_class "Student"
 ```
 
 ### VAE Experiments
@@ -63,10 +69,4 @@ We will update these instructions to include the two survival screen datasets wh
 ```
 python3 experiments_crispr.py --dataset flow-cytometry
 python3 analysis.py --experiment crispr
-```
-
-### Faithful Student's T Regression (supplement)
-```
-python3 models.py --model HeteroscedasticStudent
-python3 models.py --model FaithfulHeteroscedasticStudent
 ```
