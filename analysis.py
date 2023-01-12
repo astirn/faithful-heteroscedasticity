@@ -36,7 +36,7 @@ CONVERGENCE_SUBTITLES = {
         'Conventional Heteroscedastic': '\n(Lakshminarayanan et al., 2017)',
         'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'},
     'Monte Carlo Dropout': {
-        'Unit Variance Homoscedastic': '\n(mean-only baseline)',
+        'Unit Variance Homoscedastic': '\n(Gal and Ghahramani, 2016)',
         'Conventional Heteroscedastic': '\n(Kendall and Gal, 2017)',
         'Faithful Heteroscedastic': '\n(Ours, Proposals 1 + 2)'},
     'Student': {
