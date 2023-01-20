@@ -1,7 +1,7 @@
 # Faithful Heteroscedasticity
 
 This repository is the official implementation of
-''Faithful Heteroscedastic Regression with Neural Networks.'''
+[''Faithful Heteroscedastic Regression with Neural Networks.''](https://arxiv.org/abs/2212.09184v1)
 
 ## Requirements
 We use Docker to set up our environment.
