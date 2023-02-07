@@ -1,5 +1,6 @@
 import argparse
 import logomaker
+import matplotlib
 import os
 import pickle
 
@@ -547,6 +548,7 @@ if __name__ == '__main__':
     os.makedirs('results', exist_ok=True)
 
     # set font sizes
+    matplotlib.rcParams['pdf.fonttype'] = 42
     plt.rc('axes', labelsize=20, titlesize=20)
     plt.rc('figure', titlesize=25)
     plt.rc('legend', fontsize=15, title_fontsize=20)
